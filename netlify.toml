@@ -5,6 +5,19 @@
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
+# Service Worker 和首页必须每次确认新鲜度；用户数据仍保存在 IndexedDB / localStorage，
+# 这里只阻止旧部署的 HTML 与 Next.js hash chunk 混用。
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+    Service-Worker-Allowed = "/"
+
+[[headers]]
+  for = "/"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
 # 离线推送的执行函数已迁移至 Supabase Edge Functions（supabase/functions/），
 # 原因：Netlify Background Functions 免费档不可用。部署方式见 docs/push-supabase.sql。
 

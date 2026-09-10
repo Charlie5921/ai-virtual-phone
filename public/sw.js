@@ -1,4 +1,4 @@
-const CACHE_VERSION = "ai-phone-pwa-v12";
+const CACHE_VERSION = "ai-phone-pwa-v13";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
@@ -45,7 +45,9 @@ function isCacheableRequest(request) {
 async function networkFirst(request) {
   const cache = await caches.open(RUNTIME_CACHE);
   try {
-    const response = await fetch(request);
+    // 导航永远绕过浏览器 HTTP 缓存，避免新部署后旧 HTML 继续引用已经下线的
+    // Next.js hash chunk（手机长期驻留/PWA 场景会表现为客户端白屏）。
+    const response = await fetch(request, { cache: "no-store" });
     if (response.ok) cache.put(request, response.clone());
     return response;
   } catch (error) {
