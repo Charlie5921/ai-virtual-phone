@@ -10,7 +10,9 @@ import { ConfirmDialog } from "@/components/ui/modal";
 import { Toggle, Input } from "@/components/ui/form";
 import { Alert } from "@/components/ui/feedback";
 
-const SUPPORTED_VOICE_PROVIDERS = new Set(["Minimax", "OpenAI"]);
+const SUPPORTED_VOICE_PROVIDERS = new Set(["Minimax", "OpenAI", "FishAudio"]);
+const FISH_AUDIO_BASE_URL = "https://api.fish.audio";
+const FISH_AUDIO_MODEL = "s2.1-pro-free";
 const MINIMAX_BASE_URL_OPTIONS = [
     { id: "cn", label: "国内版", baseUrl: "https://api.minimaxi.com/v1" },
     { id: "global", label: "海外版", baseUrl: "https://api.minimax.io/v1" },
@@ -27,6 +29,7 @@ const MINIMAX_PITCH_MAX = 12;
 const MINIMAX_PITCH_STEP = 1;
 const DEFAULT_SPEECH_PITCH = 0;
 const VOICE_PROVIDER_OPTIONS = [
+    { value: "FishAudio", label: "Fish Audio · S2.1 Pro Free" },
     { value: "OpenAI", label: "OpenAI TTS" },
     { value: "MinimaxCN", label: "Minimax 语音国内版" },
     { value: "MinimaxGlobal", label: "Minimax 语音海外版" },
@@ -182,6 +185,7 @@ function uniqueOptions(options: VoiceOption[]): VoiceOption[] {
 }
 
 function defaultVoiceOptions(provider: string): VoiceOption[] {
+    if (provider === "FishAudio") return [];
     return provider === "OpenAI" ? DEFAULT_OPENAI_VOICES : DEFAULT_MINIMAX_VOICES;
 }
 
@@ -197,6 +201,17 @@ function normalizeVoiceConfigs(configs: VoiceApiConfig[]): VoiceApiConfig[] {
     return configs
         .filter(config => SUPPORTED_VOICE_PROVIDERS.has(config.provider))
         .map(config => {
+            if (config.provider === "FishAudio") {
+                const speechSpeed = typeof config.speechSpeed === "number" && Number.isFinite(config.speechSpeed)
+                    ? Math.min(MINIMAX_SPEED_MAX, Math.max(MINIMAX_SPEED_MIN, config.speechSpeed))
+                    : DEFAULT_SPEECH_SPEED;
+                return {
+                    ...config,
+                    baseUrl: FISH_AUDIO_BASE_URL,
+                    model: FISH_AUDIO_MODEL,
+                    speechSpeed,
+                };
+            }
             if (config.provider !== "Minimax") return config;
             const baseUrl = MINIMAX_BASE_URL_OPTIONS.some(option => option.baseUrl === config.baseUrl)
                 ? config.baseUrl
@@ -221,6 +236,7 @@ function makeCloneVoiceId(config: VoiceApiConfig): string {
 }
 
 function providerSelectValue(config: VoiceApiConfig): string {
+    if (config.provider === "FishAudio") return "FishAudio";
     if (config.provider === "OpenAI") return "OpenAI";
     return config.baseUrl === GLOBAL_MINIMAX_BASE_URL ? "MinimaxGlobal" : "MinimaxCN";
 }
@@ -304,6 +320,19 @@ export function VoiceSettings() {
 
     const updateProvider = (id: string, providerOption: string) => {
         const current = configs.find(c => c.id === id);
+        if (providerOption === "FishAudio") {
+            const wasFishAudio = current?.provider === "FishAudio";
+            updateConfig(id, {
+                provider: "FishAudio",
+                baseUrl: FISH_AUDIO_BASE_URL,
+                model: FISH_AUDIO_MODEL,
+                defaultVoice: wasFishAudio ? (current?.defaultVoice || "") : "",
+                speechSpeed: wasFishAudio ? (current?.speechSpeed ?? DEFAULT_SPEECH_SPEED) : DEFAULT_SPEECH_SPEED,
+            });
+            setManualModelIds(prev => ({ ...prev, [id]: false }));
+            setManualVoiceIds(prev => ({ ...prev, [id]: true }));
+            return;
+        }
         if (providerOption === "OpenAI") {
             updateConfig(id, {
                 provider: "OpenAI",
@@ -740,6 +769,41 @@ export function VoiceSettings() {
                                             </>
                                         )}
 
+                                        {config.provider === "FishAudio" && (
+                                            <>
+                                                <Alert>
+                                                    <span className="text-xs leading-relaxed">
+                                                        已固定使用 Fish Audio 官方免费模型 <strong>S2.1 Pro Free</strong>（{FISH_AUDIO_MODEL}）。API Key 只会通过本站服务端转发给 Fish Audio，不会提交到 GitHub。
+                                                    </span>
+                                                </Alert>
+                                                <div className="flex flex-col gap-1">
+                                                    <label className="menu-desc ml-1">语音模型 (TTS Model)</label>
+                                                    <Input type="text" value={FISH_AUDIO_MODEL} readOnly />
+                                                </div>
+                                                <div className="flex flex-col gap-1">
+                                                    <div className="flex items-center justify-between px-1">
+                                                        <label className="menu-desc">语速 (Speed)</label>
+                                                        <span className="menu-label font-medium">{(config.speechSpeed ?? DEFAULT_SPEECH_SPEED).toFixed(1)}×</span>
+                                                    </div>
+                                                    <input
+                                                        type="range"
+                                                        min={MINIMAX_SPEED_MIN}
+                                                        max={MINIMAX_SPEED_MAX}
+                                                        step={MINIMAX_SPEED_STEP}
+                                                        value={config.speechSpeed ?? DEFAULT_SPEECH_SPEED}
+                                                        onChange={(e) => updateConfig(config.id, { speechSpeed: Number(e.target.value) })}
+                                                        className="w-full accent-black"
+                                                        aria-label="Fish Audio 语速"
+                                                    />
+                                                    <div className="relative h-4 px-1 text-xs text-gray-500" aria-hidden="true">
+                                                        <span className="absolute left-1 whitespace-nowrap">{MINIMAX_SPEED_MIN.toFixed(1)}×</span>
+                                                        <span className="absolute whitespace-nowrap" style={{ left: "33.333%", transform: "translateX(-50%)" }}>1.0× 默认</span>
+                                                        <span className="absolute right-1 whitespace-nowrap">{MINIMAX_SPEED_MAX.toFixed(1)}×</span>
+                                                    </div>
+                                                </div>
+                                            </>
+                                        )}
+
                                         {config.provider === "Minimax" && (
                                             <>
                                                 <div className="flex flex-col gap-1">
@@ -842,10 +906,20 @@ export function VoiceSettings() {
                                         )}
 
                                         <div className="flex flex-col gap-1">
-                                            <label className="menu-desc ml-1">默认音色 (Default Voice) 或 自定义 Voice ID</label>
+                                            <label className="menu-desc ml-1">
+                                                {config.provider === "FishAudio" ? "Fish Audio 音色 reference_id" : "默认音色 (Default Voice) 或 自定义 Voice ID"}
+                                            </label>
                                             <div className="flex flex-col gap-2">
                                                 <div className="flex gap-2">
-                                                    {manualVoiceIds[config.id] ? (
+                                                    {config.provider === "FishAudio" ? (
+                                                        <Input
+                                                            type="text"
+                                                            value={config.defaultVoice}
+                                                            onChange={(e) => updateConfig(config.id, { defaultVoice: e.target.value })}
+                                                            placeholder="粘贴 Fish Audio 音色的 reference_id"
+                                                            className="flex-1"
+                                                        />
+                                                    ) : manualVoiceIds[config.id] ? (
                                                         <>
                                                             <Input
                                                                 type="text"
@@ -896,6 +970,11 @@ export function VoiceSettings() {
                                                     </button>
                                                 </div>
 
+                                                {config.provider === "FishAudio" ? (
+                                                    <span className="menu-desc ml-1 leading-relaxed">
+                                                        在 <a href="https://fish.audio/" target="_blank" rel="noreferrer" className="underline">Fish Audio</a> 选择音色后，把音色页面中的 reference_id 粘贴到上面，再点右侧播放按钮试听。
+                                                    </span>
+                                                ) : (
                                                 <div className="flex gap-2 mt-0.5">
                                                     <button
                                                         onClick={() => fetchVoices(config)}
@@ -916,6 +995,7 @@ export function VoiceSettings() {
                                                         </button>
                                                     )}
                                                 </div>
+                                                )}
 
                                                 {fetchError[config.id] && (
                                                     <Alert variant="danger">
