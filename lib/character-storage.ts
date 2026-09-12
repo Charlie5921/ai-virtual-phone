@@ -148,6 +148,7 @@ export function exportCharacterAsJson(char: Character): void {
     tags: char.tags || [],
     wechatID: char.wechatID || "",
     timeZone: char.timeZone || "",
+    tavernData: char.tavernData,
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], {
     type: "application/json",
@@ -164,7 +165,7 @@ export function parseCharacterFromJson(
   text: string
 ): CharacterImportData | null {
   try {
-    const obj = JSON.parse(text) as Record<string, unknown>;
+    const obj = JSON.parse(text.replace(/^\uFEFF/, "")) as Record<string, unknown>;
 
     // Helper: validate avatar — only accept data-URLs and http(s) URLs
     function validAvatar(v: unknown): string | null {
@@ -175,16 +176,17 @@ export function parseCharacterFromJson(
       return null;
     }
 
-    const src = (obj.schema === "ai_phone_character" && typeof obj.data === "object" && obj.data !== null)
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) return null;
+    const src = ((obj.schema === "ai_phone_character" || obj.spec === "chara_card_v2" || obj.spec === "chara_card_v3") && typeof obj.data === "object" && obj.data !== null)
       ? obj.data as Record<string, unknown>
       : obj;
 
-    if (UNSUPPORTED_CHARACTER_IMPORT_FIELDS.some((field) => field in src || field in obj)) {
-      throw new Error(CHAR_BLOCKED_FIELDS);
-    }
+    if (typeof src.name !== "string" || !src.name.trim()) return null;
+    const isTavern = obj.spec === "chara_card_v2" || obj.spec === "chara_card_v3" || "first_mes" in src || "character_book" in src;
 
     return {
       name: String(src.name ?? ""),
+      tavernData: isTavern ? src : (src.tavernData as Record<string, unknown> | undefined),
       persona: String(src.description ?? src.persona ?? ""),
       avatar: validAvatar(src.avatar),
       personality: typeof src.personality === "string" && src.personality.trim() ? src.personality : undefined,
@@ -211,6 +213,7 @@ function readPngTextChunk(u8: Uint8Array, keyword: string): string | null {
 
   while (offset + 12 <= u8.length) {
     const length = dv.getUint32(offset);
+    if (length > u8.length - offset - 12) return null;
     const type = String.fromCharCode(
       u8[offset + 4],
       u8[offset + 5],
@@ -263,7 +266,7 @@ export function parseCharacterFromPng(
   buffer: ArrayBuffer
 ): CharacterImportData | null {
   const u8 = new Uint8Array(buffer);
-  const charaBase64 = readPngTextChunk(u8, "ai_phone_character");
+  const charaBase64 = readPngTextChunk(u8, "ccv3") || readPngTextChunk(u8, "chara") || readPngTextChunk(u8, "ai_phone_character");
   if (!charaBase64) return null;
 
   try {
@@ -408,6 +411,7 @@ export async function exportCharacterAsPng(char: Character): Promise<void> {
     tags: char.tags || [],
     wechatID: char.wechatID || "",
     timeZone: char.timeZone || "",
+    tavernData: char.tavernData,
   };
   const jsonStr = JSON.stringify(payload);
   const base64 = btoa(unescape(encodeURIComponent(jsonStr)));

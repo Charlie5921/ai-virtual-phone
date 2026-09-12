@@ -6,9 +6,7 @@ import {
     loadWorldBooks,
     saveWorldBooks,
     createWorldBook,
-    parseWorldBookFromJson,
     loadBindingConfig,
-    UNSUPPORTED_IMPORT_FORMAT,
 } from "@/lib/settings-storage";
 import { loadCharacters } from "@/lib/character-storage";
 import type { WorldBookConfig, WorldBookEntry } from "@/lib/settings-types";
@@ -16,6 +14,7 @@ import { SettingsContext } from "../phone-settings-app";
 import { BottomSheet, ConfirmDialog, TextExpandModal } from "@/components/ui/modal";
 import { SwipeActionRow, useSwipeActions } from "@/components/ui/swipe-actions";
 import { notifyMascotPageContext } from "@/lib/mascot-events";
+import { importWorldBookFile } from "@/lib/worldbook-file-import";
 
 export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {}) {
     const [books, setBooks] = useState<WorldBookConfig[]>([]);
@@ -39,7 +38,7 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
             setActiveBookId(loaded[0]?.id || "");
         }
         setIsLoaded(true);
-    }, []);
+    }, [isActive]);
 
     const persist = useCallback((newBooks: WorldBookConfig[]) => {
         setBooks(newBooks);
@@ -286,31 +285,19 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
         }
     };
 
-    const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            try {
-                const text = event.target?.result as string;
-                const parsed = parseWorldBookFromJson(text);
-                if (parsed) {
-                    persist([parsed, ...books]);
-                    setActiveBookId(parsed.id);
-                } else {
-                    setImportError("无法解析世界书文件，格式不正确。");
-                }
-            } catch (e) {
-                if (e instanceof Error && e.message === UNSUPPORTED_IMPORT_FORMAT) {
-                    setImportError("不支持该世界书格式");
-                } else {
-                    setImportError("无法解析世界书文件，格式不正确。");
-                }
-            }
-        };
-        reader.readAsText(file);
         if (fileInputRef.current) fileInputRef.current.value = "";
+        try {
+            const parsed = await importWorldBookFile(file);
+            persist([parsed, ...loadWorldBooks()]);
+            setActiveBookId(parsed.id);
+            setViewMode("detail");
+        } catch (error) {
+            setImportError(error instanceof Error ? error.message : "无法解析世界书文件");
+        }
     };
 
     const handleExport = async (book: WorldBookConfig) => {
@@ -472,7 +459,7 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
 
     return (
         <div ref={wbContainerRef} className="flex flex-col gap-5 h-full">
-            <input type="file" accept=".json" className="hidden" ref={fileInputRef} onChange={handleImport} />
+            <input type="file" accept=".json,.txt,.docx,application/json,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" className="hidden" ref={fileInputRef} onChange={handleImport} />
             <input type="file" accept=".json" className="hidden" ref={entryFileInputRef} onChange={handleEntryImportFile} />
             {viewMode === "list" ? (
                 <>

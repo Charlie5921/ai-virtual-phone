@@ -431,6 +431,9 @@ export function createWorldBook(name: string): WorldBookConfig {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function parseWorldBookEntry(e: any): WorldBookEntry {
+    if (!e || typeof e !== "object" || typeof e.content !== "string") throw new Error("世界书条目缺少正文");
+    const original = e;
+    e = { ...(e.extensions || {}), ...e };
     // Resolve key: support arrays, strings, and fallback field names
     let key = "";
     if (Array.isArray(e.key)) {
@@ -441,16 +444,17 @@ function parseWorldBookEntry(e: any): WorldBookEntry {
     // Merge disable/disabled/enabled: entry is disabled if disable=true OR enabled=false
     const isDisabled = Boolean(e.disable || e.disabled || false) || (e.enabled === false);
     return {
-        uid: e.uid ? String(e.uid) : String(e.id || generateId("wb-entry")),
+        ...original,
+        uid: String(e.uid ?? e.id ?? generateId("wb-entry")),
         key,
         content: String(e.content ?? ""),
-        comment: String(e.comment ?? ""),
+        comment: String(e.comment ?? e.name ?? ""),
         use_regex: Boolean(e.use_regex || e.isRegex || false),
         disable: isDisabled,
         constant: Boolean(e.constant || false),
         position: e.position !== undefined ? (typeof e.position === "string" && /^\d+$/.test(e.position) ? Number(e.position) : e.position) : "before_char",
         depth: Number(e.depth) || 0,
-        probability: Number(e.probability) || 100,
+        probability: Number.isFinite(Number(e.probability)) && e.probability != null ? Number(e.probability) : 100,
         useProbability: Boolean(e.useProbability || false),
         role: Number(e.role) || 0,
         insertion_order: Number(e.order ?? e.insertion_order ?? 50),
@@ -462,9 +466,10 @@ export function parseWorldBookFromJson(text: string): WorldBookConfig | null {
         const obj = JSON.parse(text);
         if (!obj || typeof obj !== "object") return null;
 
-        if (isUnsupportedWorldBookFormat(obj)) throw new Error(UNSUPPORTED_IMPORT_FORMAT);
+        if (!obj.entries || typeof obj.entries !== "object") return null;
 
         const wb = createWorldBook(obj.name || "导入的世界书");
+        wb.description = typeof obj.description === "string" ? obj.description : "";
         if (Array.isArray(obj.entries)) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const parsedEntries = obj.entries.map((e: any) => parseWorldBookEntry(e));

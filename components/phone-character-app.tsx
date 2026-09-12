@@ -54,6 +54,7 @@ import { notifyMascotPageContext } from "@/lib/mascot-events";
 import { kvGet, kvSet } from "@/lib/kv-db";
 import { normalizeTimeZone } from "@/lib/character-time";
 import { removeCharacterChatReferences } from "@/lib/character-chat-cleanup";
+import { importCharacterWorldBook } from "@/lib/tavern-worldbook-import";
 
 type ViewType = "list" | "detail";
 
@@ -246,6 +247,12 @@ export function PhoneCharacterApp({ onClose, onNotice }: PhoneCharacterAppProps)
             onStartCharPlacement={(char: Character) => setPendingPlacementChar(char)}
             onPlacementDone={(placed: Character) => {
               setPendingPlacementChar(null);
+              try {
+                const count = importCharacterWorldBook(placed);
+                if (count) onNotice(`角色已导入，世界书 ${count} 条已导入并绑定`);
+              } catch (error) {
+                onNotice(error instanceof Error ? error.message : "世界书导入失败");
+              }
               // 新建/导入的角色放进当前打开的卷宗（normalize 默认丢进默认世界）
               if (safeWorldId !== DEFAULT_CHARACTER_WORLD_ID) {
                 moveCharacterToWorld(placed.id, safeWorldId);
@@ -892,7 +899,8 @@ function CharListView({
   async function handleImportFile(file: File) {
     const styleIdx = pendingStyleRef.current;
     try {
-      if (file.type === "application/json" || file.name.endsWith(".json")) {
+      if (file.size > 20 * 1024 * 1024) return onNotice("角色卡不能超过 20 MB");
+      if (file.type === "application/json" || file.name.toLowerCase().endsWith(".json")) {
         const text = await file.text();
         const data = parseCharacterFromJson(text);
         if (!data) return onNotice("解析失败，请检查文件格式");
@@ -900,7 +908,7 @@ function CharListView({
         c.polaroidStyle = styleIdx;
         onStartCharPlacement(c);
         onNotice("点击画布放置角色");
-      } else if (file.type === "image/png" || file.name.endsWith(".png")) {
+      } else if (file.type === "image/png" || file.name.toLowerCase().endsWith(".png")) {
         const buffer = await file.arrayBuffer();
         const data = parseCharacterFromPng(buffer);
         if (!data) return onNotice("未在 PNG 中找到角色数据");
@@ -1068,7 +1076,7 @@ function CharListView({
             <div className="wt-bottom-pill">
               <button className="wt-bottom-pill-btn" onClick={() => { pendingActionRef.current = 'import'; setShowStylePicker(true); }}>
                 <IconImport />
-                <span>IMPORT</span>
+                <span>导入角色卡</span>
               </button>
               <button className="wt-bottom-pill-btn" onClick={() => { pendingActionRef.current = 'create'; setShowStylePicker(true); }}>
                 <IconPlus />
