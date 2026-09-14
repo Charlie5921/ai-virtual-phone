@@ -5,30 +5,11 @@ export function worldBookFromText(text: string, name: string): WorldBookConfig {
     const normalized = text.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n").trim();
     if (!normalized) throw new Error("文档没有可导入的文字");
     const book = createWorldBook(name);
-    const sections: { title: string; content: string }[] = [];
-    let title = "";
-    let lines: string[] = [];
-    let hasHeading = false;
-    const flush = () => {
-        const content = lines.join("\n").trim();
-        if (content || title) sections.push({ title, content });
-        lines = [];
-    };
-    for (const line of normalized.split("\n")) {
-        const heading = line.match(/^\s*#{1,6}\s+(.+)$/) || line.match(/^\s*【([^】]+)】\s*$/);
-        if (heading) {
-            hasHeading = true;
-            flush();
-            title = heading[1].trim();
-        } else lines.push(line);
-    }
-    flush();
-    const entries = hasHeading ? sections : normalized.split(/\n\s*\n/).filter(Boolean).map(content => ({ title: "", content }));
-    book.entries = entries.map((entry, index) => ({
-        uid: `${book.id}-entry-${index}`, key: "", comment: entry.title || `条目 ${index + 1}`,
-        content: entry.content, use_regex: false, disable: false, constant: true,
-        position: "before_char", insertion_order: index, probability: 100, useProbability: false,
-    }));
+    book.entries = [{
+        uid: `${book.id}-entry-0`, key: "", comment: name,
+        content: normalized, use_regex: false, disable: false, constant: true,
+        position: "before_char", insertion_order: 0, probability: 100, useProbability: false,
+    }];
     return book;
 }
 
@@ -62,9 +43,12 @@ export async function importWorldBookFile(file: File): Promise<WorldBookConfig> 
     if (xml.getElementsByTagName("parsererror").length) throw new Error("DOCX 文档内容已损坏");
     const ns = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
     const paragraphs = Array.from(xml.getElementsByTagNameNS(ns, "p")).map(p => {
-        const text = Array.from(p.getElementsByTagNameNS(ns, "t")).map(t => t.textContent || "").join("");
-        const style = p.getElementsByTagNameNS(ns, "pStyle")[0]?.getAttributeNS(ns, "val") || "";
-        return /^(heading[1-6]|标题[1-6])$/i.test(style) ? `# ${text}` : text;
+        return Array.from(p.getElementsByTagNameNS(ns, "*")).map(node => {
+            if (node.localName === "t") return node.textContent || "";
+            if (node.localName === "tab") return "\t";
+            if (node.localName === "br" || node.localName === "cr") return "\n";
+            return "";
+        }).join("");
     });
     return worldBookFromText(paragraphs.join("\n\n"), name);
 }

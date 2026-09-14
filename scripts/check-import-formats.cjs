@@ -48,12 +48,17 @@ assert.equal(parseCharacterFromPng(new ArrayBuffer(10)), null);
 assert.equal(parseCharacterFromJson('null'), null);
 assert.equal(parseCharacterFromJson('{}'), null);
 assert.equal(parseWorldBookFromJson('{"entries":[null]}'), null);
-assert.equal(worldBookFromText('# 城市\n内容一\n\n# 人物\n内容二', '文档').entries.length, 2);
-assert.equal(worldBookFromText('第一段\n\n第二段', '文档').entries.length, 2);
-assert.equal(worldBookFromText('【城市】\n内容', '文档').entries[0].comment, '城市');
+for (const text of ['# 城市\n内容一\n\n# 人物\n内容二', '第一段\n\n第二段', '【城市】\n内容']) {
+  const book = worldBookFromText(text, '文档');
+  assert.equal(book.entries.length, 1);
+  assert.equal(book.entries[0].content, text);
+  assert.equal(book.entries[0].comment, '文档');
+}
 (async () => {
   const file = new File(['中文第一段\n\n中文第二段'], '中文.TXT');
-  assert.equal((await importWorldBookFile(file)).entries.length, 2);
+  const book = await importWorldBookFile(file);
+  assert.equal(book.entries.length, 1);
+  assert.equal(book.entries[0].content, '中文第一段\n\n中文第二段');
   await assert.rejects(() => importWorldBookFile(new File([''], 'empty.txt')));
-  console.log('PASS: V1/V2/V3 JSON, PNG chara/ccv3, embedded entries, UTF-8 TXT, headings and invalid inputs');
+  console.log('PASS: V1/V2/V3 JSON, PNG chara/ccv3, embedded entries, whole-document TXT, preserved headings and invalid inputs');
 })().catch(error => { console.error(error); process.exitCode = 1; });

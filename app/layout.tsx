@@ -57,6 +57,8 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: "cover",
+  // Resize the layout with Android Chrome's keyboard so the header stays visible.
+  interactiveWidget: "resizes-content",
 };
 
 export const metadata: Metadata = {
