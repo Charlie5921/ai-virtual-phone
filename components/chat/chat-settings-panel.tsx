@@ -11,6 +11,9 @@ import {
     loadChatSessions,
     loadChatMessages,
     loadChatContacts,
+    loadChatAppSettings,
+    saveChatAppSettings,
+    CHAT_APP_SETTINGS_UPDATED_EVENT,
     getChatMessagePreview,
     pushChatMessage,
     removeChatContact,
@@ -280,6 +283,30 @@ function ChatInfoIcon({ icon: Icon, color }: { icon: LucideIcon; color: string }
         <span className="chat-info-icon" style={chatInfoIconStyle(color)}>
             <Icon size={22} strokeWidth={1.75} />
         </span>
+    );
+}
+
+function EnterToSendSetting() {
+    const [enabled, setEnabled] = useState(() => loadChatAppSettings().enterToSendEnabled === true);
+    useEffect(() => {
+        const sync = () => setEnabled(loadChatAppSettings().enterToSendEnabled === true);
+        window.addEventListener(CHAT_APP_SETTINGS_UPDATED_EVENT, sync);
+        return () => window.removeEventListener(CHAT_APP_SETTINGS_UPDATED_EVENT, sync);
+    }, []);
+    return (
+        <div className="menu-item">
+            <ChatInfoIcon icon={MessageSquare} color={CONTENT_APP_ACCENTS.chat} />
+            <div className="menu-label-group">
+                <span className="menu-label">回车发送</span>
+                <span className="menu-desc">所有聊天生效；Enter 发送，Shift+Enter 换行，选字时不发送</span>
+            </div>
+            <div className="menu-right">
+                <Toggle checked={enabled} onChange={value => {
+                    setEnabled(value);
+                    saveChatAppSettings({ ...loadChatAppSettings(), enterToSendEnabled: value });
+                }} />
+            </div>
+        </div>
     );
 }
 
@@ -986,6 +1013,7 @@ export function ChatSettingsPanel({
 
                 {/* Toggles */}
                 <div className="menu-group">
+                    <EnterToSendSetting />
                     <div className="menu-item">
                         <ChatInfoIcon icon={Pin} color={BINDING_ACCENTS.preset} />
                         <div className="menu-label-group"><span className="menu-label">置顶聊天</span></div>

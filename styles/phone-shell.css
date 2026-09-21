@@ -1173,6 +1173,26 @@
   .splash-shell-wrap .phone-frame {
     width: var(--phone-screen-width);
   }
+
+  html[data-mobile-keyboard-open] {
+    --phone-screen-height: var(--mobile-keyboard-height, 100dvh);
+  }
+
+  html[data-mobile-keyboard-open],
+  html[data-mobile-keyboard-open] body,
+  html[data-mobile-keyboard-open] .app-root {
+    height: var(--mobile-keyboard-height, 100dvh);
+  }
+
+  html[data-mobile-keyboard-open] .phone-shell-wrap {
+    margin-top: 0;
+    transform: none;
+    transition: none;
+  }
+
+  html[data-mobile-keyboard-open] .chat-input-bar {
+    padding-bottom: 8px;
+  }
 }
 
 .settings-main-menu,

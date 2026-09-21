@@ -932,6 +932,8 @@ function useAndroidCaretKeyboardLift() {
     let focusedElement: HTMLElement | null = null;
     let raf = 0;
     let currentLift = 0;
+    let restingHeight = viewport?.height ?? window.innerHeight;
+    let keyboardOpen = false;
 
     const applyLift = (nextLift: number) => {
       const rounded = Math.max(0, Math.round(nextLift));
@@ -947,6 +949,20 @@ function useAndroidCaretKeyboardLift() {
     const update = () => {
       raf = 0;
       const element = focusedElement;
+      const height = viewport?.height ?? window.innerHeight;
+      const inset = Math.max(0, window.innerHeight - height);
+      keyboardOpen = mobileMq.matches && !!viewport && Math.abs(viewport.scale - 1) < 0.05
+        && (!!element || keyboardOpen) && Math.max(restingHeight - height, inset) > 80;
+      root.toggleAttribute("data-mobile-keyboard-open", keyboardOpen);
+      if (keyboardOpen) {
+        // Fit the visible area instead of lifting the whole shell. In particular,
+        // status-bar-drop must not leave an uncovered strip above the keyboard.
+        root.style.setProperty("--mobile-keyboard-height", `${Math.round(height)}px`);
+        applyLift(0);
+        return;
+      }
+      root.style.removeProperty("--mobile-keyboard-height");
+      if (!element) restingHeight = height;
       if (!element || document.activeElement !== element || !mobileMq.matches || !viewport) {
         applyLift(0);
         return;
@@ -975,6 +991,7 @@ function useAndroidCaretKeyboardLift() {
     const handleFocusIn = (event: FocusEvent) => {
       const target = event.target;
       if (!isKeyboardEditableElement(target)) return;
+      if (!keyboardOpen) restingHeight = viewport?.height ?? window.innerHeight;
       focusedElement = target;
       requestUpdate();
     };
@@ -982,6 +999,7 @@ function useAndroidCaretKeyboardLift() {
     const handleFocusOut = () => {
       focusedElement = null;
       applyLift(0);
+      requestUpdate();
     };
 
     const handleCaretMove = () => {
@@ -989,7 +1007,7 @@ function useAndroidCaretKeyboardLift() {
     };
 
     const handleViewportChange = () => {
-      if (focusedElement) requestUpdate();
+      requestUpdate();
     };
 
     document.addEventListener("focusin", handleFocusIn);
@@ -999,6 +1017,7 @@ function useAndroidCaretKeyboardLift() {
     document.addEventListener("input", handleCaretMove, true);
     viewport?.addEventListener("resize", handleViewportChange);
     viewport?.addEventListener("scroll", handleViewportChange);
+    window.addEventListener("resize", handleViewportChange);
 
     return () => {
       if (raf) window.cancelAnimationFrame(raf);
@@ -1009,7 +1028,10 @@ function useAndroidCaretKeyboardLift() {
       document.removeEventListener("input", handleCaretMove, true);
       viewport?.removeEventListener("resize", handleViewportChange);
       viewport?.removeEventListener("scroll", handleViewportChange);
+      window.removeEventListener("resize", handleViewportChange);
       root.style.removeProperty("--mobile-keyboard-lift");
+      root.style.removeProperty("--mobile-keyboard-height");
+      root.removeAttribute("data-mobile-keyboard-open");
     };
   }, []);
 }

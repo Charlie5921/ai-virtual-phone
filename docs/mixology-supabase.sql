@@ -13,7 +13,7 @@
 create table if not exists public.mixology_items (
   id text primary key,
 
-  kind text not null check (kind in ('character', 'persona', 'base', 'flavor', 'glass', 'strength', 'ticket', 'garnish', 'encore', 'filter', 'mechanism')),
+  kind text not null check (kind in ('character', 'persona', 'preface', 'base', 'flavor', 'glass', 'strength', 'ticket', 'garnish', 'encore', 'filter', 'mechanism')),
   name text not null,
   hook text not null default '',
   cover text not null default '',
@@ -146,7 +146,12 @@ notify pgrst, 'reload schema';
 alter table public.mixology_items drop constraint if exists mixology_items_kind_check;
 alter table public.mixology_items
   add constraint mixology_items_kind_check
-  check (kind in ('character', 'persona', 'base', 'flavor', 'glass', 'strength', 'ticket', 'garnish', 'encore', 'filter', 'mechanism'));
+  check (kind in ('character', 'persona', 'preface', 'base', 'flavor', 'glass', 'strength', 'ticket', 'garnish', 'encore', 'filter', 'mechanism'));
 alter table public.mixology_items add column if not exists author_avatar text not null default '';
 alter table public.mixology_recipes add column if not exists author_avatar text not null default '';
+-- Access is mediated by the site's authenticated server routes.
+revoke all on public.mixology_items, public.mixology_recipes, public.mixology_likes,
+  public.mixology_saves, public.mixology_comments from anon, authenticated;
+grant select, insert, update, delete on public.mixology_items, public.mixology_recipes,
+  public.mixology_likes, public.mixology_saves, public.mixology_comments to service_role;
 notify pgrst, 'reload schema';
