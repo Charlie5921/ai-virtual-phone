@@ -149,6 +149,11 @@ export function exportCharacterAsJson(char: Character): void {
     wechatID: char.wechatID || "",
     timeZone: char.timeZone || "",
     tavernData: char.tavernData,
+    polaroidStyle: char.polaroidStyle ?? 0,
+    polaroidSize: char.polaroidSize || "random",
+    polaroidImageX: char.polaroidImageX ?? 50,
+    polaroidImageY: char.polaroidImageY ?? 50,
+    polaroidImageZoom: char.polaroidImageZoom ?? 1,
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], {
     type: "application/json",
@@ -184,6 +189,22 @@ export function parseCharacterFromJson(
     if (typeof src.name !== "string" || !src.name.trim()) return null;
     const isTavern = obj.spec === "chara_card_v2" || obj.spec === "chara_card_v3" || "first_mes" in src || "character_book" in src;
 
+    const polaroidStyle = typeof src.polaroidStyle === "number" && Number.isFinite(src.polaroidStyle)
+      ? Math.max(0, Math.min(4, Math.round(src.polaroidStyle)))
+      : undefined;
+    const polaroidSize = src.polaroidSize === "small" || src.polaroidSize === "medium" || src.polaroidSize === "large"
+      ? src.polaroidSize
+      : "random" as const;
+    const polaroidImageX = typeof src.polaroidImageX === "number" && Number.isFinite(src.polaroidImageX)
+      ? Math.max(0, Math.min(100, src.polaroidImageX))
+      : undefined;
+    const polaroidImageY = typeof src.polaroidImageY === "number" && Number.isFinite(src.polaroidImageY)
+      ? Math.max(0, Math.min(100, src.polaroidImageY))
+      : undefined;
+    const polaroidImageZoom = typeof src.polaroidImageZoom === "number" && Number.isFinite(src.polaroidImageZoom)
+      ? Math.max(1, Math.min(3, src.polaroidImageZoom))
+      : undefined;
+
     return {
       name: String(src.name ?? ""),
       tavernData: isTavern ? src : (src.tavernData as Record<string, unknown> | undefined),
@@ -193,6 +214,11 @@ export function parseCharacterFromJson(
       tags: Array.isArray(src.tags) ? src.tags.map(String) : [],
       wechatID: typeof src.wechatID === "string" && src.wechatID.trim() ? src.wechatID : undefined,
       timeZone: normalizeTimeZone(src.timeZone ?? src.timezone ?? src.time_zone),
+      polaroidStyle,
+      polaroidSize,
+      polaroidImageX,
+      polaroidImageY,
+      polaroidImageZoom,
     };
   } catch (e) {
     if (e instanceof Error && e.message === CHAR_BLOCKED_FIELDS) throw e;

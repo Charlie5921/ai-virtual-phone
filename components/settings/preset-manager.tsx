@@ -141,6 +141,35 @@ type PromptRenderItem =
     | { type: "collapsed"; prompts: Prompt[]; groupKey: string; label: string }
     | { type: "collapse-header"; groupKey: string; label: string; count: number };
 
+/** Resolve a collapsed summary/header row to a concrete index in the full prompt order. */
+function resolveGroupRowDropIndex(
+    renderItems: PromptRenderItem[],
+    fromRenderIndex: number,
+    toRenderIndex: number,
+    displayed: Prompt[],
+    fromIndex: number,
+    isMoving: (prompt: Prompt) => boolean,
+): number {
+    const target = renderItems[toRenderIndex];
+    if (!target || target.type === "item") return -1;
+    const members = target.type === "collapsed"
+        ? target.prompts
+        : renderItems
+            .slice(toRenderIndex + 1, toRenderIndex + 1 + target.count)
+            .flatMap(item => (item.type === "item" ? [item.prompt] : []));
+    const memberIndices = members
+        .filter(prompt => !isMoving(prompt))
+        .map(prompt => displayed.findIndex(entry => entry.identifier === prompt.identifier))
+        .filter(index => index >= 0);
+    if (memberIndices.length === 0) return -1;
+    if (target.type === "collapsed" && toRenderIndex > fromRenderIndex) {
+        const last = Math.max(...memberIndices);
+        return last > fromIndex ? last : last + 1;
+    }
+    const first = Math.min(...memberIndices);
+    return first < fromIndex ? first : first - 1;
+}
+
 function buildPromptRenderItems(
     preset: PresetConfig,
     tagGroups: TagGroupProfile[],
@@ -536,6 +565,7 @@ export function PresetManager({ isActive = true }: { isActive?: boolean } = {}) 
                             });
                         }
                         const prompt = { ...prompts[promptIdx] };
+                        const previousIdentifier = prompt.identifier;
                         if (subfield === "identifier") {
                             prompt.identifier = value;
                             handled = true;
@@ -584,8 +614,24 @@ export function PresetManager({ isActive = true }: { isActive?: boolean } = {}) 
                         for (let pi = 0; pi < prompts.length; pi++) {
                             prompts[pi] = { ...prompts[pi], system_prompt: pi === firstSystemIdx };
                         }
-                        // Auto-generate prompt_order from array order
-                        preset.prompt_order = prompts.filter(p => p.identifier && !p.identifier.startsWith("_placeholder")).map(p => ({ identifier: p.identifier, enabled: true }));
+                        // 顺序表保留现有顺序与开关：被改名的条目映射到新 identifier，新条目追加到
+                        // 末尾，已不存在或仍是占位符的剔除。不能按数组顺序重建，否则用户拖好的顺序
+                        // 会被打回创建顺序，开关状态也会全部变成开启。
+                        const validIds = new Set(prompts.filter(p => p.identifier && !p.identifier.startsWith("_placeholder")).map(p => p.identifier));
+                        const seenIds = new Set<string>();
+                        const nextOrder: PromptOrderEntry[] = [];
+                        for (const entry of preset.prompt_order ?? []) {
+                            const id = entry.identifier === previousIdentifier ? prompt.identifier : entry.identifier;
+                            if (!validIds.has(id) || seenIds.has(id)) continue;
+                            seenIds.add(id);
+                            nextOrder.push({ identifier: id, enabled: entry.enabled !== false });
+                        }
+                        for (const p of prompts) {
+                            if (!validIds.has(p.identifier) || seenIds.has(p.identifier)) continue;
+                            seenIds.add(p.identifier);
+                            nextOrder.push({ identifier: p.identifier, enabled: true });
+                        }
+                        preset.prompt_order = nextOrder;
                     }
                 }
 
@@ -699,19 +745,29 @@ export function PresetManager({ isActive = true }: { isActive?: boolean } = {}) 
         if (!preset) return;
         const fromRenderItem = promptRenderItems[fromRenderIndex];
         const toRenderItem = promptRenderItems[toRenderIndex];
-        if (fromRenderItem?.type !== "item" || toRenderItem?.type !== "item") return;
+        if (fromRenderItem?.type !== "item" || !toRenderItem) return;
 
         // DOM 索引来自当前筛选/折叠视图；先按 identifier 映射回完整顺序，避免拖错条目。
         const displayed = buildDisplayedPrompts(preset);
         const fromIndex = displayed.findIndex(prompt => prompt.identifier === fromRenderItem.prompt.identifier);
-        const toIndex = displayed.findIndex(prompt => prompt.identifier === toRenderItem.prompt.identifier);
-        if (fromIndex < 0 || toIndex < 0) return;
+        if (fromIndex < 0) return;
         const dragged = displayed[fromIndex];
-
-        let newDisplayed: Prompt[];
         const isBulk = selectMode
             && actionableSelectedIds.size > 1
             && actionableSelectedIds.has(dragged.identifier);
+        const toIndex = toRenderItem.type === "item"
+            ? displayed.findIndex(prompt => prompt.identifier === toRenderItem.prompt.identifier)
+            : resolveGroupRowDropIndex(
+                promptRenderItems,
+                fromRenderIndex,
+                toRenderIndex,
+                displayed,
+                fromIndex,
+                prompt => (isBulk ? actionableSelectedIds.has(prompt.identifier) : prompt.identifier === dragged.identifier),
+            );
+        if (toIndex < 0) return;
+
+        let newDisplayed: Prompt[];
         if (isBulk) {
             // 整组选中条目一起移动（选中集内部相对顺序保持不变）
             const selected = displayed.filter(p => actionableSelectedIds.has(p.identifier));
@@ -912,14 +968,18 @@ export function PresetManager({ isActive = true }: { isActive?: boolean } = {}) 
             injection_depth: 0,
             enabled: true,
         };
-        const newPrompts = [...(preset.prompts || []), newPrompt];
-        const newOrder = newPrompts.map(p => ({
+        // 顺序表以当前显示顺序为基础追加，不能按 prompts 数组重建：拖动排序只改
+        // prompt_order、不动数组，按数组重建会把用户拖好的顺序打回创建顺序。
+        const displayed = buildDisplayedPrompts(preset);
+        const newOrder = [...displayed, newPrompt].map(p => ({
             identifier: p.identifier,
-            enabled: preset.prompt_order
-                ? (preset.prompt_order.find(o => o.identifier === p.identifier)?.enabled ?? p.enabled)
-                : p.enabled,
+            enabled: p.identifier === newPrompt.identifier
+                ? true
+                : (preset.prompt_order
+                    ? (preset.prompt_order.find(o => o.identifier === p.identifier)?.enabled ?? p.enabled)
+                    : p.enabled),
         }));
-        updatePreset(preset.id, { prompts: newPrompts, prompt_order: newOrder });
+        updatePreset(preset.id, { prompts: [...(preset.prompts || []), newPrompt], prompt_order: newOrder });
     };
 
     const appendImportedPrompts = (preset: PresetConfig, raws: unknown[]) => {
@@ -940,11 +1000,15 @@ export function PresetManager({ isActive = true }: { isActive?: boolean } = {}) 
             return { ...p, identifier: id };
         });
         const newPrompts = [...(preset.prompts || []), ...appended];
-        const newOrder = newPrompts.map(p => ({
+        // 同 createPromptAtEnd：以显示顺序为基础追加，保住用户拖好的顺序
+        const appendedIds = new Set(appended.map(p => p.identifier));
+        const newOrder = [...buildDisplayedPrompts(preset), ...appended].map(p => ({
             identifier: p.identifier,
-            enabled: preset.prompt_order
-                ? (preset.prompt_order.find(o => o.identifier === p.identifier)?.enabled ?? p.enabled)
-                : p.enabled,
+            enabled: appendedIds.has(p.identifier)
+                ? p.enabled
+                : (preset.prompt_order
+                    ? (preset.prompt_order.find(o => o.identifier === p.identifier)?.enabled ?? p.enabled)
+                    : p.enabled),
         }));
         updatePreset(preset.id, { prompts: newPrompts, prompt_order: newOrder });
         if (appended.length === 1) setEditingPromptId(appended[0].identifier);
