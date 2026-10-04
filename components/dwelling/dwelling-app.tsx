@@ -40,6 +40,7 @@ type CharState = {
     imageErrors: Record<string, string>;
     /** 正在生图的 roomId 集合 */
     generatingImageRooms: Set<string>;
+    /** 一键探索：是否进行中 / 总数 / 已处理 / 当前物品名 / 用户已点停止 */
     batchExploring: boolean;
     batchTotal: number;
     batchDone: number;
@@ -91,12 +92,14 @@ export function DwellingApp({ onClose, visible, onIdle }: DwellingAppProps) {
     const rerender = () => forceUpdate(n => n + 1);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [showRefreshConfirm, setShowRefreshConfirm] = useState(false);
+    /** 一键探索确认：count 为本次会探索（= 调用模型）的物品数，0 表示都探索过了 */
     const [exploreAllConfirm, setExploreAllConfirm] = useState<{ charId: string; count: number } | null>(null);
     const [itemDetail, setItemDetail] = useState<ItemDetail | null>(null);
     const [imageEnabled, setImageEnabled] = useState(true);
     const [imageConfigured, setImageConfigured] = useState(false);
     const activeCharIdRef = useRef<string | null>(null);
     const activeRoomIdxRef = useRef(0);
+    // 一键探索可能跑好几分钟，结束时要读最新的可见状态和回调，不能用发起时的闭包
     const visibleRef = useRef(visible);
     visibleRef.current = visible;
     const onIdleRef = useRef(onIdle);
@@ -344,6 +347,8 @@ export function DwellingApp({ onClose, visible, onIdle }: DwellingAppProps) {
         rerender();
     }
 
+    // ── 一键探索全部物品 ──
+    // 只处理还没探索过、也不在单独探索中的物品；和单件探索共用 loadingItemKeys，互相不会重复生成。
     function collectUnexploredItems(cs: CharState) {
         const entries: { room: DwellingRoom; furniture: DwellingFurniture; item: DwellingFurnitureItem }[] = [];
         for (const room of cs.layout?.rooms ?? []) {
@@ -383,6 +388,7 @@ export function DwellingApp({ onClose, visible, onIdle }: DwellingAppProps) {
             for (const { room, furniture, item } of entries) {
                 if (cs.batchCancelled || cs.layout !== layout) break;
                 const key = itemKey(room.id, item.id);
+                // 批量途中用户自己点开过的物品：已有结果或正在生成，直接跳过
                 if (cs.itemHtmlCache[key] || cs.loadingItemKeys.has(key)) {
                     cs.batchDone += 1;
                     rerender();
@@ -399,6 +405,7 @@ export function DwellingApp({ onClose, visible, onIdle }: DwellingAppProps) {
                 }
                 cs.batchDone += 1;
                 if (!html) {
+                    // 失败多半是接口或额度问题，继续只会接着失败、白白消耗，直接停下
                     cs.lastItemError = error || "探索失败";
                     break;
                 }
@@ -629,6 +636,36 @@ export function DwellingApp({ onClose, visible, onIdle }: DwellingAppProps) {
                             </button>
                             <button className="dw-confirm-btn dw-confirm-btn-cancel" style={{ marginTop: 4 }} onClick={() => setShowRefreshConfirm(false)}>取消</button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* 一键探索确认：先说清楚会调用几次模型 */}
+            {exploreAllConfirm && (
+                <div className="dw-confirm-overlay">
+                    <div className="dw-confirm-shade" onClick={() => setExploreAllConfirm(null)} />
+                    <div className="dw-confirm-card">
+                        <div className="dw-confirm-title">一键探索</div>
+                        {exploreAllConfirm.count > 0 ? (
+                            <>
+                                <div className="dw-confirm-msg">
+                                    还有 {exploreAllConfirm.count} 件物品没有探索过<br />
+                                    全部探索会调用 {exploreAllConfirm.count} 次模型<br />
+                                    过程中可以随时停止
+                                </div>
+                                <div className="dw-confirm-actions">
+                                    <button className="dw-confirm-btn dw-confirm-btn-cancel" onClick={() => setExploreAllConfirm(null)}>再想想</button>
+                                    <button className="dw-confirm-btn" onClick={() => { const { charId } = exploreAllConfirm; setExploreAllConfirm(null); void handleExploreAll(charId); }}>开始探索</button>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <div className="dw-confirm-msg">这里的物品都已经探索过了</div>
+                                <div className="dw-confirm-actions">
+                                    <button className="dw-confirm-btn" onClick={() => setExploreAllConfirm(null)}>知道了</button>
+                                </div>
+                            </>
+                        )}
                     </div>
                 </div>
             )}

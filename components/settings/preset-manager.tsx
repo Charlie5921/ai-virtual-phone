@@ -141,7 +141,13 @@ type PromptRenderItem =
     | { type: "collapsed"; prompts: Prompt[]; groupKey: string; label: string }
     | { type: "collapse-header"; groupKey: string; label: string; count: number };
 
-/** Resolve a collapsed summary/header row to a concrete index in the full prompt order. */
+/**
+ * 拖拽落点是「折叠行」或「展开组标题」时，换算成完整顺序里的目标下标。
+ * 这两种行不是条目本身：折叠行代表一整组条目，组标题下方紧跟的 count 行才是组内条目。
+ * 往下拖越过折叠行 → 落在这组之后；往上拖，或落在组标题上 → 落在这组第一条之前。
+ * 返回值沿用条目拖拽的约定：目标在拖动条目之后表示落在它后面，在之前表示落在它前面。
+ * 组内没有可作为落点的条目时返回 -1。
+ */
 function resolveGroupRowDropIndex(
     renderItems: PromptRenderItem[],
     fromRenderIndex: number,
@@ -755,6 +761,7 @@ export function PresetManager({ isActive = true }: { isActive?: boolean } = {}) 
         const isBulk = selectMode
             && actionableSelectedIds.size > 1
             && actionableSelectedIds.has(dragged.identifier);
+        // 落在折叠行 / 展开组标题上时，它们不是条目，要换算成完整顺序里的位置，否则这次拖拽会被丢弃。
         const toIndex = toRenderItem.type === "item"
             ? displayed.findIndex(prompt => prompt.identifier === toRenderItem.prompt.identifier)
             : resolveGroupRowDropIndex(

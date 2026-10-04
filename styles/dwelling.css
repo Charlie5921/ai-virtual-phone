@@ -271,6 +271,7 @@
 .dw-tab-action:disabled { opacity: 0.35; cursor: default; }
 .dw-tab-action-danger { color: #c98a8e; border-color: rgba(180, 90, 95, 0.45); }
 
+/* ── 一键探索：批量进度条 ── */
 .dw-batch-bar {
   display: flex;
   align-items: center;
