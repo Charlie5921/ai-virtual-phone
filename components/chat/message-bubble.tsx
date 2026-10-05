@@ -104,6 +104,8 @@ export const MessageBubble = memo(function MessageBubble({ msg, onUpdate, charNa
             return <AppCardBubble msg={msg} characterId={characterId} characterName={msg.senderName || charName} />;
         case "image":
             return <ImageBubble msg={msg} onUpdate={onUpdate} characterId={characterId} />;
+        case "video":
+            return <FakeVideoBubble msg={msg} />;
         case "location":
             return <LocationBubble msg={msg} />;
         case "poke":
@@ -146,6 +148,7 @@ export const MessageBubble = memo(function MessageBubble({ msg, onUpdate, charNa
         if (prev.msg.isTyping !== next.msg.isTyping) return false;
         if (prev.msg.mediaData?.status !== next.msg.mediaData?.status) return false;
         if (prev.msg.mediaData?.label !== next.msg.mediaData?.label) return false;
+        if (prev.msg.mediaData?.fileDuration !== next.msg.mediaData?.fileDuration) return false;
         if (prev.msg.mediaData?.claimedBy?.length !== next.msg.mediaData?.claimedBy?.length) return false;
         if (prev.msg.mediaData?.appName !== next.msg.mediaData?.appName) return false;
         if (prev.msg.mediaData?.appCardTitle !== next.msg.mediaData?.appCardTitle) return false;
@@ -1413,6 +1416,73 @@ function ImageBubble({
             </div>
             {previewAndDialog}
         </div>
+    );
+}
+
+function formatFakeVideoDuration(seconds?: number): string {
+    const safe = Number.isFinite(seconds) ? Math.max(0, Math.round(seconds || 0)) : 0;
+    return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, "0")}`;
+}
+
+function FakeVideoBubble({ msg }: { msg: ChatMessage }) {
+    const label = msg.mediaData?.label?.trim() || "视频";
+    const rawCoverUrl = msg.mediaUrl || "";
+    const [coverUrl, setCoverUrl] = useState(isMediaStoreRef(rawCoverUrl) ? "" : rawCoverUrl);
+    const [showInfo, setShowInfo] = useState(false);
+
+    useEffect(() => {
+        if (!isMediaStoreRef(rawCoverUrl)) {
+            setCoverUrl(rawCoverUrl);
+            return;
+        }
+        let revokeUrl = "";
+        loadMediaObjectUrl(rawCoverUrl).then(objectUrl => {
+            if (!objectUrl) return;
+            revokeUrl = objectUrl;
+            setCoverUrl(objectUrl);
+        });
+        return () => {
+            if (revokeUrl) URL.revokeObjectURL(revokeUrl);
+        };
+    }, [rawCoverUrl]);
+
+    return (
+        <>
+            <button
+                type="button"
+                className="chat-fake-video-card"
+                onClick={event => {
+                    event.stopPropagation();
+                    setShowInfo(true);
+                }}
+                aria-label={`查看模拟视频：${label}`}
+            >
+                {coverUrl ? (
+                    <img className="chat-fake-video-cover" src={coverUrl} alt="" />
+                ) : (
+                    <span className="chat-fake-video-placeholder" aria-hidden="true" />
+                )}
+                <span className="chat-fake-video-shade" aria-hidden="true" />
+                <span className="chat-fake-video-play" aria-hidden="true">
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                </span>
+                <span className="chat-fake-video-caption">{label}</span>
+                <span className="chat-fake-video-duration">{formatFakeVideoDuration(msg.mediaData?.fileDuration)}</span>
+            </button>
+            {showInfo && typeof document !== "undefined" ? createPortal(
+                <div className="modal-overlay" onClick={() => setShowInfo(false)}>
+                    <div className="modal-dialog" onClick={event => event.stopPropagation()}>
+                        <div className="ts-16 font-semibold text-center text-[var(--c-text)]">模拟视频消息</div>
+                        <div className="ts-14 leading-relaxed text-[var(--c-text)] text-center">{label}</div>
+                        <div className="ts-12 leading-relaxed text-[var(--c-icon)] text-center">
+                            这是一条视频样式消息，不包含真实视频文件
+                        </div>
+                        <button type="button" className="ui-btn ui-btn-success w-full" onClick={() => setShowInfo(false)}>知道了</button>
+                    </div>
+                </div>,
+                document.body,
+            ) : null}
+        </>
     );
 }
 

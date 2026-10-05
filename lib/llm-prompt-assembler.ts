@@ -1172,6 +1172,11 @@ export function formatRichMediaForHistory(msg: ChatMessage, userName: string, ch
         }
         case "image":
             return formatPhotoDirective(msg);
+        case "video": {
+            const description = d?.label?.trim() || "视频";
+            const duration = d?.fileDuration ? `:时长${Math.round(d.fileDuration)}秒` : "";
+            return `[视频:${description}${duration}]`;
+        }
         case "media_file":
             if (d?.fileType === "image" && isImageGenerationMediaMessage(msg)) {
                 return formatImageGenerationDirective(msg);

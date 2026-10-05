@@ -468,6 +468,10 @@ export function getChatMessagePreview(msg: ChatMessage): string {
         const label = msg.mediaData?.label?.trim();
         return label ? `[图片] ${label}` : "[图片]";
     }
+    if (msg.mediaType === "video") {
+        const label = msg.mediaData?.label?.trim();
+        return label ? `[视频] ${label}` : "[视频]";
+    }
     if (msg.mediaType === "app_card") {
         const appName = msg.mediaData?.appName || "APP";
         const title = msg.mediaData?.appCardTitle || msg.mediaData?.appCardSummary || msg.content;
@@ -1357,6 +1361,10 @@ function messageToEditableRawPart(message: ChatMessage): string {
     if (message.mediaType === "image") {
         const label = message.mediaData?.label?.trim() || message.content.trim();
         if (label) return `[照片:${label}]`;
+    }
+    if (message.mediaType === "video") {
+        const label = message.mediaData?.label?.trim() || message.content.trim();
+        if (label) return `[视频:${label}]`;
     }
     return message.content.trim();
 }

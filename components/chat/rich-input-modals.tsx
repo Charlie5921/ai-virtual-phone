@@ -80,6 +80,121 @@ export function PhotoInputModal({ onSend, onClose }: PhotoInputModalProps) {
     );
 }
 
+// ── Simulated Video Input Modal ─────────────────────────────
+
+interface FakeVideoInputModalProps {
+    onSend: (description: string, durationSeconds: number, coverDataUrl?: string) => void;
+    onClose: () => void;
+}
+
+function parseVideoDuration(value: string): number | null {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    if (/^\d+$/.test(trimmed)) {
+        const seconds = Number(trimmed);
+        return seconds >= 1 && seconds <= 3599 ? seconds : null;
+    }
+    const match = trimmed.match(/^(\d{1,2}):(\d{2})$/);
+    if (!match) return null;
+    const minutes = Number(match[1]);
+    const seconds = Number(match[2]);
+    const total = minutes * 60 + seconds;
+    return seconds < 60 && total >= 1 && total <= 3599 ? total : null;
+}
+
+function formatVideoDuration(seconds: number): string {
+    const safe = Math.max(0, Math.round(seconds));
+    return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, "0")}`;
+}
+
+export function FakeVideoInputModal({ onSend, onClose }: FakeVideoInputModalProps) {
+    const [description, setDescription] = useState("");
+    const [duration, setDuration] = useState("00:15");
+    const [coverDataUrl, setCoverDataUrl] = useState<string | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const durationSeconds = parseVideoDuration(duration);
+    const canSend = description.trim().length > 0 && durationSeconds !== null;
+
+    const handleCoverChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file || !file.type.startsWith("image/")) return;
+        const reader = new FileReader();
+        reader.onload = () => setCoverDataUrl(typeof reader.result === "string" ? reader.result : null);
+        reader.readAsDataURL(file);
+    };
+
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="modal-dialog" onClick={event => event.stopPropagation()}>
+                <div className="ts-16 font-semibold text-center text-[var(--c-text)]">发送视频</div>
+                <div className="ts-12 leading-relaxed text-[var(--c-icon)] text-center">
+                    只发送视频样式卡片，不会上传或保存真实视频文件
+                </div>
+
+                <button
+                    type="button"
+                    className="chat-fake-video-card chat-fake-video-card--editor"
+                    onClick={() => fileInputRef.current?.click()}
+                    aria-label={coverDataUrl ? "更换假视频封面" : "添加假视频封面"}
+                >
+                    {coverDataUrl ? (
+                        <img className="chat-fake-video-cover" src={coverDataUrl} alt="假视频封面预览" />
+                    ) : (
+                        <span className="chat-fake-video-placeholder" aria-hidden="true" />
+                    )}
+                    <span className="chat-fake-video-shade" aria-hidden="true" />
+                    <span className="chat-fake-video-play" aria-hidden="true">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                    </span>
+                    <span className="chat-fake-video-duration">{formatVideoDuration(durationSeconds ?? 15)}</span>
+                    <span className="chat-fake-video-cover-hint">{coverDataUrl ? "点击更换封面" : "点击添加封面（可选）"}</span>
+                </button>
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleCoverChange}
+                />
+
+                <textarea
+                    value={description}
+                    onChange={event => setDescription(event.target.value)}
+                    placeholder="描述视频内容，例如：海边晚霞和浪花"
+                    className="ui-input w-full"
+                    rows={3}
+                    style={{ resize: "none" }}
+                />
+                <div className="w-full">
+                    <label className="ts-12 text-[var(--c-icon)] block mb-1.5" htmlFor="fake-video-duration">视频时长</label>
+                    <input
+                        id="fake-video-duration"
+                        value={duration}
+                        onChange={event => setDuration(event.target.value.replace(/[^0-9:]/g, ""))}
+                        placeholder="00:15"
+                        inputMode="numeric"
+                        className="ui-input w-full"
+                    />
+                    {duration.trim() && durationSeconds === null ? (
+                        <div className="ts-11 mt-1 text-[var(--c-danger)]">请输入 00:15 这样的时长，最长 59:59</div>
+                    ) : null}
+                </div>
+                <div className="flex gap-3 w-full">
+                    <button type="button" onClick={onClose} className="ui-btn ui-btn-ghost ui-btn-bordered-ghost flex-1">取消</button>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            if (canSend && durationSeconds !== null) onSend(description.trim(), durationSeconds, coverDataUrl || undefined);
+                        }}
+                        disabled={!canSend}
+                        className="ui-btn ui-btn-success flex-1"
+                    >发送</button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 // ── Red Packet Modal ─────────────────────────────
 
 interface RedPacketModalProps {

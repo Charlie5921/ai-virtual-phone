@@ -227,6 +227,7 @@ const SEARCH_MEDIA_BUBBLE_TYPES = new Set<SearchResultMediaType>([
     "payment_request",
     "gift",
     "image",
+    "video",
     "location",
     "music_share",
     "xiaohongshu_note_share",
