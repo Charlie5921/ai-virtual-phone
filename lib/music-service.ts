@@ -1,12 +1,21 @@
 // lib/music-service.ts — Unified music search service (local + Netease Cloud Music API)
 
+import { Capacitor } from "@capacitor/core";
 import { loadAllTracks, type MusicTrack } from "./music-storage";
-import { kvGet, kvSet, kvRemove, registerKvMigration } from "./kv-db";
+import { kvGet, kvSet, registerKvMigration } from "./kv-db";
 import {
     DEFAULT_NETEASE_API_BASE,
     isDefaultNeteaseApiBase,
     normalizeMusicApiBaseUrl,
 } from "./music-api-defaults";
+import * as neteaseNative from "./netease/endpoints";
+import { ensureNeteaseAnonymousToken } from "./netease/anon-token";
+export { saveNeteaseCookie, loadNeteaseCookie, clearNeteaseCookie } from "./netease/cookie-store";
+import { loadNeteaseCookie } from "./netease/cookie-store";
+
+function isNativeApp(): boolean {
+    return Capacitor.isNativePlatform();
+}
 
 // ── Netease API Config ──
 
@@ -17,7 +26,6 @@ export type MusicApiConfig = {
 };
 
 const MUSIC_API_KEY = "ai_phone_music_api_v1";
-const NETEASE_COOKIE_KEY = "ai_phone_netease_cookie_v1";
 const MUSIC_API_CONFIG_VERSION = 2;
 const NETEASE_REAL_IP = process.env.NEXT_PUBLIC_NETEASE_REAL_IP || "116.25.146.177";
 
@@ -55,21 +63,6 @@ export function saveMusicApiConfig(config: MusicApiConfig): void {
 export function isNeteaseConfigured(): boolean {
     const cfg = loadMusicApiConfig();
     return !!cfg.baseUrl.trim();
-}
-
-// ── Cookie persistence for QR login auth ──
-
-export function saveNeteaseCookie(cookie: string): void {
-    try { kvSet(NETEASE_COOKIE_KEY, cookie); } catch { /* ignore */ }
-}
-
-export function loadNeteaseCookie(): string {
-    if (typeof window === "undefined") return "";
-    try { return kvGet(NETEASE_COOKIE_KEY) || ""; } catch { return ""; }
-}
-
-export function clearNeteaseCookie(): void {
-    try { kvRemove(NETEASE_COOKIE_KEY); } catch { /* ignore */ }
 }
 
 /** Append saved cookie and mainland realIP to a Netease API URL as query parameters. */
@@ -203,6 +196,17 @@ function resolveNeteaseRequestBase(baseUrl: string): string {
 
 /** Search songs via Netease API */
 export async function searchNetease(query: string, limit = 20): Promise<NeteaseSearchResult[]> {
+    if (isNativeApp()) {
+        try {
+            await ensureNeteaseAnonymousToken();
+            const data = await neteaseNative.cloudSearch(query, limit);
+            const songs = data?.result?.songs;
+            return Array.isArray(songs) ? songs.map(mapSongToSearchResult) : [];
+        } catch (e) {
+            console.warn("[MusicService] Native Netease search failed:", e);
+            return [];
+        }
+    }
     const base = neteaseBase();
     if (!base) return [];
     try {
@@ -227,6 +231,28 @@ export type NeteasePlayInfo = {
 
 /** Get playable URL for a Netease song, with a concrete failure reason. */
 export async function getNeteasePlayInfo(songId: number): Promise<NeteasePlayInfo> {
+    if (isNativeApp()) {
+        try {
+            await ensureNeteaseAnonymousToken();
+            const data = await neteaseNative.songUrl(songId);
+            const d = data?.data?.[0];
+            const url = d?.url;
+            if (url && typeof url === "string") {
+                return { url: url.replace(/^http:\/\//, "https://"), trial: !!d?.freeTrialInfo, reason: "" };
+            }
+            const loggedIn = !!loadNeteaseCookie();
+            if (d?.fee === 1) {
+                return { url: null, trial: false, reason: loggedIn ? "VIP 歌曲，当前账号没有黑胶会员" : "VIP 歌曲，请先在设置中登录网易云账号" };
+            }
+            if (d?.fee === 4) {
+                return { url: null, trial: false, reason: "付费专辑歌曲，需购买后才能播放" };
+            }
+            return { url: null, trial: false, reason: "该歌曲暂时无法播放" };
+        } catch (e) {
+            console.warn("[MusicService] Native get play URL failed:", e);
+            return { url: null, trial: false, reason: "网络异常，加载失败" };
+        }
+    }
     const base = neteaseBase();
     if (!base) return { url: null, trial: false, reason: "音乐 API 未配置" };
     try {
@@ -268,6 +294,15 @@ export async function getNeteasePlayUrl(songId: number): Promise<string | null> 
 
 /** Get lyrics for a Netease song */
 export async function getNeteaseLyrics(songId: number): Promise<string> {
+    if (isNativeApp()) {
+        try {
+            await ensureNeteaseAnonymousToken();
+            const data = await neteaseNative.lyric(songId);
+            return data?.lrc?.lyric || "";
+        } catch {
+            return "";
+        }
+    }
     const base = neteaseBase();
     if (!base) return "";
     try {
@@ -281,6 +316,23 @@ export async function getNeteaseLyrics(songId: number): Promise<string> {
 
 /** Get song detail (cover, artist ids, etc.) */
 export async function getNeteaseSongDetail(songId: number): Promise<{ coverUrl?: string; name?: string; artists?: string; artistList?: { id: number; name: string }[]; album?: string } | null> {
+    if (isNativeApp()) {
+        try {
+            await ensureNeteaseAnonymousToken();
+            const data = await neteaseNative.songDetail([songId]);
+            const song = data?.songs?.[0];
+            if (!song) return null;
+            return {
+                coverUrl: secureHttpUrl(song.al?.picUrl),
+                name: song.name,
+                artists: (song.ar || []).map((a: any) => a.name).join("/"),
+                artistList: (song.ar || []).filter((a: any) => a?.id && a?.name).map((a: any) => ({ id: a.id, name: a.name })),
+                album: song.al?.name || "",
+            };
+        } catch {
+            return null;
+        }
+    }
     const base = neteaseBase();
     if (!base) return null;
     try {
@@ -303,6 +355,12 @@ export async function getNeteaseSongDetail(songId: number): Promise<{ coverUrl?:
 // ── QR Login ──
 
 export async function getQrKey(baseUrl: string): Promise<string | null> {
+    if (isNativeApp()) {
+        try {
+            await ensureNeteaseAnonymousToken();
+            return await neteaseNative.qrKey();
+        } catch { return null; }
+    }
     try {
         const url = resolveNeteaseRequestBase(baseUrl);
         const resp = await fetch(withNeteaseParams(`${url}/login/qr/key?timestamp=${Date.now()}`));
@@ -312,6 +370,9 @@ export async function getQrKey(baseUrl: string): Promise<string | null> {
 }
 
 export async function getQrImage(baseUrl: string, key: string): Promise<string | null> {
+    if (isNativeApp()) {
+        try { return await neteaseNative.qrImage(key); } catch { return null; }
+    }
     try {
         const url = resolveNeteaseRequestBase(baseUrl);
         const resp = await fetch(withNeteaseParams(`${url}/login/qr/create?key=${key}&qrimg=true&timestamp=${Date.now()}`));
@@ -322,6 +383,14 @@ export async function getQrImage(baseUrl: string, key: string): Promise<string |
 
 /** Check QR scan status: 800=expired, 801=waiting, 802=scanned, 803=authorized */
 export async function checkQrStatus(baseUrl: string, key: string): Promise<{ code: number; message: string; nickname?: string; cookie?: string }> {
+    if (isNativeApp()) {
+        try {
+            const res = await neteaseNative.qrCheck(key);
+            return { code: res.code, message: res.message || "", nickname: res.nickname, cookie: res.cookie };
+        } catch (e) {
+            return { code: 0, message: e instanceof Error ? e.message : "检查失败" };
+        }
+    }
     try {
         const url = resolveNeteaseRequestBase(baseUrl);
         const resp = await fetch(withNeteaseParams(`${url}/login/qr/check?key=${key}&timestamp=${Date.now()}`));
@@ -334,6 +403,14 @@ export async function checkQrStatus(baseUrl: string, key: string): Promise<{ cod
 
 /** Check current login status */
 export async function checkLoginStatus(baseUrl: string): Promise<{ loggedIn: boolean; nickname?: string }> {
+    if (isNativeApp()) {
+        try {
+            const data = await neteaseNative.loginStatus();
+            const profile = data?.data?.profile;
+            if (profile?.nickname) return { loggedIn: true, nickname: profile.nickname };
+            return { loggedIn: false };
+        } catch { return { loggedIn: false }; }
+    }
     try {
         const url = resolveNeteaseRequestBase(baseUrl);
         const resp = await fetch(withNeteaseParams(`${url}/login/status?timestamp=${Date.now()}`));
@@ -359,6 +436,12 @@ export type NeteasePlaylist = {
 
 /** Get current logged-in user's uid */
 async function getLoginUid(): Promise<number | null> {
+    if (isNativeApp()) {
+        try {
+            const data = await neteaseNative.loginStatus();
+            return data?.data?.profile?.userId || null;
+        } catch { return null; }
+    }
     const base = neteaseBase();
     if (!base) return null;
     try {
@@ -370,6 +453,20 @@ async function getLoginUid(): Promise<number | null> {
 
 /** Fetch user's playlists */
 export async function getUserPlaylists(): Promise<NeteasePlaylist[]> {
+    if (isNativeApp()) {
+        const uid = await getLoginUid();
+        if (!uid) return [];
+        try {
+            const data = await neteaseNative.userPlaylist(uid);
+            return (data?.playlist || []).map((p: any) => ({
+                id: p.id,
+                name: p.name,
+                coverUrl: secureHttpUrl(p.coverImgUrl),
+                trackCount: p.trackCount,
+                creator: p.creator?.nickname || "",
+            }));
+        } catch { return []; }
+    }
     const base = neteaseBase();
     if (!base) return [];
     const uid = await getLoginUid();
@@ -392,6 +489,12 @@ export async function getUserPlaylists(): Promise<NeteasePlaylist[]> {
 
 /** Fetch tracks in a playlist */
 export async function getPlaylistTracks(playlistId: number): Promise<NeteaseSearchResult[]> {
+    if (isNativeApp()) {
+        try {
+            const data = await neteaseNative.playlistTrackAll(playlistId);
+            return (data?.songs || []).map(mapSongToSearchResult);
+        } catch { return []; }
+    }
     const base = neteaseBase();
     if (!base) return [];
     try {
@@ -402,6 +505,13 @@ export async function getPlaylistTracks(playlistId: number): Promise<NeteaseSear
 }
 
 export async function getDailyRecommendSongs(): Promise<NeteaseSearchResult[]> {
+    if (isNativeApp()) {
+        try {
+            const data = await neteaseNative.recommendSongs();
+            const songs = data?.data?.dailySongs || data?.recommend || [];
+            return Array.isArray(songs) ? songs.map(mapSongToSearchResult) : [];
+        } catch { return []; }
+    }
     const base = neteaseBase();
     if (!base) return [];
     try {
@@ -413,6 +523,13 @@ export async function getDailyRecommendSongs(): Promise<NeteaseSearchResult[]> {
 }
 
 export async function getPersonalFm(): Promise<NeteaseSearchResult[]> {
+    if (isNativeApp()) {
+        try {
+            const data = await neteaseNative.personalFm();
+            const songs = data?.data || [];
+            return Array.isArray(songs) ? songs.map(mapSongToSearchResult) : [];
+        } catch { return []; }
+    }
     const base = neteaseBase();
     if (!base) return [];
     try {
@@ -424,6 +541,18 @@ export async function getPersonalFm(): Promise<NeteaseSearchResult[]> {
 }
 
 export async function getPersonalizedPlaylists(limit = 12): Promise<NeteasePlaylist[]> {
+    if (isNativeApp()) {
+        try {
+            const data = await neteaseNative.personalized(limit);
+            return (data?.result || []).map((p: any) => ({
+                id: p.id,
+                name: p.name,
+                coverUrl: secureHttpUrl(p.picUrl || p.coverImgUrl),
+                trackCount: p.trackCount || 0,
+                creator: p.creator?.nickname || "",
+            }));
+        } catch { return []; }
+    }
     const base = neteaseBase();
     if (!base) return [];
     try {
@@ -441,6 +570,18 @@ export async function getPersonalizedPlaylists(limit = 12): Promise<NeteasePlayl
 }
 
 export async function getRecommendResource(): Promise<NeteasePlaylist[]> {
+    if (isNativeApp()) {
+        try {
+            const data = await neteaseNative.recommendResource();
+            return (data?.recommend || []).map((p: any) => ({
+                id: p.id,
+                name: p.name,
+                coverUrl: secureHttpUrl(p.picUrl || p.coverImgUrl),
+                trackCount: p.trackCount || 0,
+                creator: p.creator?.nickname || "",
+            }));
+        } catch { return []; }
+    }
     const base = neteaseBase();
     if (!base) return [];
     try {
@@ -458,6 +599,17 @@ export async function getRecommendResource(): Promise<NeteasePlaylist[]> {
 }
 
 export async function getHotSearchDetail(): Promise<NeteaseHotSearch[]> {
+    if (isNativeApp()) {
+        try {
+            const data = await neteaseNative.hotSearchDetail();
+            return (data?.data || []).map((item: any) => ({
+                keyword: item.searchWord || item.keyword || "",
+                score: item.score,
+                content: item.content,
+                iconType: item.iconType,
+            })).filter((item: NeteaseHotSearch) => item.keyword);
+        } catch { return []; }
+    }
     const base = neteaseBase();
     if (!base) return [];
     try {
@@ -473,6 +625,23 @@ export async function getHotSearchDetail(): Promise<NeteaseHotSearch[]> {
 }
 
 export async function getToplists(): Promise<NeteaseToplist[]> {
+    if (isNativeApp()) {
+        try {
+            const data = await neteaseNative.toplistDetail();
+            return (data?.list || []).map((p: any) => ({
+                id: p.id,
+                name: p.name,
+                coverUrl: secureHttpUrl(p.coverImgUrl),
+                trackCount: p.trackCount || p.tracks?.length || 0,
+                creator: "",
+                updateFrequency: p.updateFrequency,
+                tracks: Array.isArray(p.tracks) ? p.tracks.slice(0, 3).map((t: any) => ({
+                    first: t.first || "",
+                    second: t.second || "",
+                })) : [],
+            }));
+        } catch { return []; }
+    }
     const base = neteaseBase();
     if (!base) return [];
     try {
@@ -494,6 +663,26 @@ export async function getToplists(): Promise<NeteaseToplist[]> {
 }
 
 export async function getPlaylistDetail(playlistId: number): Promise<NeteasePlaylistDetail | null> {
+    if (isNativeApp()) {
+        try {
+            const data = await neteaseNative.playlistDetail(playlistId);
+            const p = data?.playlist;
+            if (!p) return null;
+            return {
+                id: p.id,
+                name: p.name,
+                coverUrl: secureHttpUrl(p.coverImgUrl),
+                trackCount: p.trackCount || 0,
+                creator: p.creator?.nickname || "",
+                description: p.description || "",
+                tags: Array.isArray(p.tags) ? p.tags : [],
+                playCount: p.playCount,
+                subscribedCount: p.subscribedCount,
+                commentCount: p.commentCount,
+                shareCount: p.shareCount,
+            };
+        } catch { return null; }
+    }
     const base = neteaseBase();
     if (!base) return null;
     try {
@@ -541,14 +730,27 @@ export async function getSongComments(songId: number, limit = 20): Promise<Netea
 
 /** Paged comments (song or playlist): hot comments arrive on the first page only. */
 export async function getSongCommentPage(songId: number, offset = 0, limit = 20, resType: NeteaseCommentResType = 0): Promise<NeteaseCommentPage> {
-    const base = neteaseBase();
     const empty: NeteaseCommentPage = { hotComments: [], comments: [], total: 0, hasMore: false };
+    const mapList = (list: any) => (Array.isArray(list) ? list.map(mapComment).filter((c: NeteaseComment) => c.content) : []);
+    if (isNativeApp()) {
+        // 原生直连只有歌曲评论接口，歌单评论没有对应端点
+        if (resType === 2) return empty;
+        try {
+            const data = await neteaseNative.commentMusic(songId, limit, offset);
+            return {
+                hotComments: offset === 0 ? mapList(data?.hotComments) : [],
+                comments: mapList(data?.comments),
+                total: data?.total || 0,
+                hasMore: !!data?.more,
+            };
+        } catch { return empty; }
+    }
+    const base = neteaseBase();
     if (!base) return empty;
     try {
         const endpoint = resType === 2 ? "comment/playlist" : "comment/music";
         const resp = await fetch(withNeteaseParams(`${base}/${endpoint}?id=${songId}&limit=${limit}&offset=${offset}&timestamp=${Date.now()}`));
         const data = await resp.json();
-        const mapList = (list: any) => (Array.isArray(list) ? list.map(mapComment).filter((c: NeteaseComment) => c.content) : []);
         return {
             hotComments: offset === 0 ? mapList(data?.hotComments) : [],
             comments: mapList(data?.comments),
@@ -560,6 +762,8 @@ export async function getSongCommentPage(songId: number, offset = 0, limit = 20,
 
 /** Floor replies of a comment */
 export async function getFloorComments(songId: number, parentCommentId: number, limit = 20, resType: NeteaseCommentResType = 0): Promise<NeteaseComment[]> {
+    // 原生直连没有楼层评论端点
+    if (isNativeApp()) return [];
     const base = neteaseBase();
     if (!base) return [];
     try {
@@ -685,6 +889,18 @@ export type NeteasePlayRecord = { song: NeteaseSearchResult; playCount: number }
 
 /** Listening record with per-song play counts (type 1 = this week, 0 = all time) */
 export async function getUserRecordWithCounts(type: 0 | 1 = 1): Promise<NeteasePlayRecord[]> {
+    if (isNativeApp()) {
+        const uid = await getLoginUid();
+        if (!uid) return [];
+        try {
+            const data = await neteaseNative.userRecord(uid, type);
+            const records = data?.weekData || data?.allData || [];
+            if (!Array.isArray(records)) return [];
+            return records
+                .map((r: any) => ({ song: mapSongToSearchResult(r.song), playCount: r.playCount || 0 }))
+                .filter((r: NeteasePlayRecord) => r.song.id);
+        } catch { return []; }
+    }
     const base = neteaseBase();
     if (!base) return [];
     const uid = await getLoginUid();
@@ -704,7 +920,6 @@ export async function getUserRecordWithCounts(type: 0 | 1 = 1): Promise<NeteaseP
 
 const TRACK_PLAYLIST_MAP_KEY = "ai_phone_track_playlist_map_v1";
 registerKvMigration(MUSIC_API_KEY);
-registerKvMigration(NETEASE_COOKIE_KEY);
 registerKvMigration(TRACK_PLAYLIST_MAP_KEY);
 
 /** Load {neteaseTrackId → playlistId} mapping */

@@ -8,6 +8,7 @@ import {
     generateTrackId, parseFilename, getAudioDuration,
     type MusicTrack,
 } from "@/lib/music-storage";
+import { getPlayHistory, type PlayHistoryEntry } from "@/lib/music-history";
 import { useMusicControls, type MusicControlsValue } from "@/lib/music-context";
 import { SessionCustomCSS } from "@/components/ui/session-custom-css";
 import {
@@ -364,6 +365,8 @@ export default function MusicApp({ onClose }: Props) {
                     onToast={showMusicToast}
                     onGoLocal={() => setTab("local")}
                     onOpenSettings={() => setShowSettings(true)}
+                    localTracks={tracks}
+                    onPlayLocal={handlePlay}
                 />
             )}
 
@@ -716,7 +719,7 @@ function DailySongsPage({ songs, player, formatTime, onPlayNetease, onPlayAll }:
 }
 
 // ── Mine Tab（网易云「我的」页式排版：全部真数据，拿不到的板块直接隐藏） ──
-function MineTab({ player, formatTime, onPlayNetease, onPlayAll, activePlaylist, setActivePlaylist, playlists, loading, onToast, onGoLocal, onOpenSettings }: {
+function MineTab({ player, formatTime, onPlayNetease, onPlayAll, activePlaylist, setActivePlaylist, playlists, loading, onToast, onGoLocal, onOpenSettings, localTracks, onPlayLocal }: {
     player: MusicControlsValue;
     formatTime: (s: number) => string;
     onPlayNetease: (r: NeteaseSearchResult) => void;
@@ -728,6 +731,8 @@ function MineTab({ player, formatTime, onPlayNetease, onPlayAll, activePlaylist,
     onToast: (text: string) => void;
     onGoLocal: () => void;
     onOpenSettings: () => void;
+    localTracks: MusicTrack[];
+    onPlayLocal: (track: MusicTrack) => void;
 }) {
     const [weekRecords, setWeekRecords] = useState<NeteasePlayRecord[]>(() => readMusicCache("music-user-week-records", []));
     const [userDetail, setUserDetail] = useState<NeteaseUserDetail | null>(() => readMusicCache("music-user-detail", null));
@@ -740,6 +745,7 @@ function MineTab({ player, formatTime, onPlayNetease, onPlayAll, activePlaylist,
     const [openRadioId, setOpenRadioId] = useState<number | null>(null);
     const [radioPrograms, setRadioPrograms] = useState<Record<number, NeteaseDjProgram[]>>({});
     const [heartBusy, setHeartBusy] = useState(false);
+    const [history, setHistory] = useState<PlayHistoryEntry[]>(() => getPlayHistory());
 
     useEffect(() => {
         let cancelled = false;
@@ -776,6 +782,12 @@ function MineTab({ player, formatTime, onPlayNetease, onPlayAll, activePlaylist,
             writeMusicCache("music-user-events", events);
         });
         return () => { cancelled = true; };
+    }, []);
+
+    useEffect(() => {
+        const onUpdate = () => setHistory(getPlayHistory());
+        window.addEventListener("music-history-updated", onUpdate);
+        return () => window.removeEventListener("music-history-updated", onUpdate);
     }, []);
 
     if (activePlaylist) {
@@ -852,6 +864,23 @@ function MineTab({ player, formatTime, onPlayNetease, onPlayAll, activePlaylist,
         if (tracks.length === 0) { onToast("专辑曲目拉取失败"); return; }
         onPlayAll(tracks);
         onToast("播放专辑「" + album.name + "」");
+    };
+
+    const handleResume = (entry: PlayHistoryEntry) => {
+        if (entry.source === "local") {
+            const track = localTracks.find(item => item.id === entry.id);
+            if (track) onPlayLocal(track);
+            else onToast("这首本地音乐已经不在资料库里了");
+            return;
+        }
+        onPlayNetease({
+            id: Number(entry.id.replace("netease_", "")),
+            name: entry.title,
+            artists: entry.artist,
+            album: "",
+            duration: entry.duration * 1000,
+            coverUrl: entry.coverUrl,
+        });
     };
 
     const statItems: Array<{ label: string; value: string }> = [];
@@ -948,6 +977,17 @@ function MineTab({ player, formatTime, onPlayNetease, onPlayAll, activePlaylist,
                                     <div className="music-week-note">时长按播放次数 × 歌曲长度估算</div>
                                 </div>
                             )}
+                            <MusicSection title="本地播放历史" action={history.length + " 首"}>
+                                {history.length > 0 ? (
+                                    <div className="music-list music-list-compact">
+                                        {history.map((entry, index) => (
+                                            <PlayHistoryRow key={entry.id} entry={entry} index={index} formatTime={formatTime} onPlay={handleResume} />
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="music-empty"><div className="music-empty-text">还没有播放记录</div></div>
+                                )}
+                            </MusicSection>
                             {recentList.length > 0 ? (
                                 <MusicSection title="最近播放" action={recentList.length + " 首"}>
                                     <div className="music-list music-list-compact">
@@ -1140,6 +1180,30 @@ function NeteaseSongRow({ song, index, formatTime, onPlay }: {
                 <div className="music-song-artist">{song.artists}{song.album ? ` · ${song.album}` : ""}</div>
             </div>
             <div className="music-song-duration">{formatTime(song.duration / 1000)}</div>
+        </div>
+    );
+}
+
+function PlayHistoryRow({ entry, index, formatTime, onPlay }: {
+    entry: PlayHistoryEntry;
+    index: number;
+    formatTime: (seconds: number) => string;
+    onPlay: (entry: PlayHistoryEntry) => void;
+}) {
+    return (
+        <div className="music-song" style={{ animationDelay: `${Math.min(index * 0.04, 0.5)}s` }} onClick={() => onPlay(entry)}>
+            <div className="music-song-cover">
+                {entry.coverUrl ? <img src={entry.coverUrl} alt="" /> : (
+                    <div className="music-song-cover-placeholder">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></svg>
+                    </div>
+                )}
+            </div>
+            <div className="music-song-info">
+                <div className="music-song-title">{entry.title}</div>
+                <div className="music-song-artist">{entry.artist}</div>
+            </div>
+            <div className="music-song-duration">{formatTime(entry.duration)}</div>
         </div>
     );
 }

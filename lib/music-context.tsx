@@ -5,6 +5,7 @@ import { createContext, useContext, useState, useRef, useCallback, useEffect, us
 import { appNowISO } from "./app-clock";
 import type { MusicTrack } from "./music-storage";
 import { getAudioBlob, markTrackPlayed } from "./music-storage";
+import { recordPlayHistory } from "./music-history";
 import { findPlayableMatch, getNeteaseLyrics, getNeteasePlayUrl, getNeteasePlayInfo, getNeteaseSongDetail } from "./music-service";
 import { kvGet, kvSet, registerKvMigration } from "./kv-db";
 import { registerMusicControlBridge } from "./music-control-bridge";
@@ -234,6 +235,14 @@ export function MusicProvider({ children }: { children: ReactNode }) {
 
         setCurrentTrack(track);
         setCurrentTime(0);
+        recordPlayHistory({
+            id: track.id,
+            title: track.title,
+            artist: track.artist,
+            coverUrl: track.coverUrl,
+            duration: track.duration,
+            source: track.id.startsWith("netease_") ? "netease" : "local",
+        });
         syncListenTogetherTrack(track, consumeMusicSourceHint());
 
         try {
@@ -258,6 +267,14 @@ export function MusicProvider({ children }: { children: ReactNode }) {
         audio.src = url;
         setCurrentTrack(track);
         setCurrentTime(0);
+        recordPlayHistory({
+            id: track.id,
+            title: track.title,
+            artist: track.artist,
+            coverUrl: track.coverUrl,
+            duration: track.duration,
+            source: track.id.startsWith("netease_") ? "netease" : "local",
+        });
         syncListenTogetherTrack(track, consumeMusicSourceHint());
         audio.play().catch(() => {});
     }, [cleanupBlobUrl]);
