@@ -1,6 +1,7 @@
 "use client";
 
 import { Component, memo, useCallback, useEffect, useInsertionEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ErrorInfo, type ReactNode } from "react";
+import { appNow } from "@/lib/app-clock";
 
 import { updateStatusBarTone } from "@/lib/bg-tone";
 import { startDiaryEntryTimerService, stopDiaryEntryTimerService } from "@/lib/diary-entry-timer-service";
@@ -605,7 +606,7 @@ function StatusClock() {
   useEffect(() => {
     const update = () => {
       setLabel(
-        new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false })
+        appNow().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false })
       );
     };
     update();

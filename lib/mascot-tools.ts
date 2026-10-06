@@ -11,6 +11,7 @@
 //   - 导航工具 (navigate)             — 1 个独立工具（直接暴露）
 
 import type { LlmToolDefinition } from "./llm-provider-adapter";
+import { appNowISO } from "./app-clock";
 import type { ToolCall, ToolResult } from "./tool-executor";
 import type { MascotPageContext } from "./mascot-context";
 import type { Prompt } from "./settings-types";
@@ -1903,7 +1904,7 @@ async function handleCreateCharacter(args: Record<string, unknown>): Promise<Too
     const { loadCharacters, saveCharacters } = await import("./character-storage");
     const chars = loadCharacters();
     if (chars.find((c) => c.name === args.name)) return { name: "创建角色", success: false, error: "已存在同名角色" };
-    const now = new Date().toISOString();
+    const now = appNowISO();
     const briefPersona = typeof args.briefPersona === "string" ? args.briefPersona.trim() : "";
     const newChar = {
         id: `char_${Date.now()}`,
@@ -1929,7 +1930,7 @@ async function handleUpdateCharacterField(args: Record<string, unknown>, ctx: Ma
     if (idx < 0) return { name: "更新角色字段", success: false, error: `找不到角色：${args.name}` };
     const field = args.field as string;
     const value = args.value as string;
-    const now = new Date().toISOString();
+    const now = appNowISO();
     const char = { ...chars[idx] } as Record<string, unknown>;
     if (field === "name" || field === "persona" || field === "personality") {
         char[field] = value;

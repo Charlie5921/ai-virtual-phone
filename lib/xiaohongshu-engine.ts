@@ -1,4 +1,5 @@
 import { getChatImageFromIndexedDB } from "./chat-asset-storage";
+import { appNowISO } from "./app-clock";
 import { ChatEngineError, previewMessagesForApi, sendLLMRequest } from "./chat-engine";
 import { loadCharacters } from "./character-storage";
 import type { Character } from "./character-types";
@@ -445,7 +446,7 @@ function appendCharacterThreadToNote(args: {
       ...note,
       comments: [...note.comments, ...appended],
       commentCount: note.commentCount + appended.length,
-      updatedAt: appended.length > 0 ? new Date().toISOString() : note.updatedAt,
+      updatedAt: appended.length > 0 ? appNowISO() : note.updatedAt,
     },
     appended,
     notifications,
@@ -489,7 +490,7 @@ function parseNoteBlock(
     comments: comments.map((comment, idx) => ({ ...comment, id: `${noteId}_comment_${idx + 1}` })),
     imageDescription: cleanMultiline(block.fields["图片描述"] ?? block.fields["配图"], 500) || undefined,
     createdAt: new Date(Date.now() - index * 1000 * 60 * 5).toISOString(),
-    updatedAt: new Date().toISOString(),
+    updatedAt: appNowISO(),
   };
 }
 
@@ -1497,7 +1498,7 @@ export function applyNpcReaction(note: XiaohongshuNote, reaction: ParsedXiaohong
     recentSaveNames: addNames(note.recentSaveNames, reaction.recentSaveNames),
     comments: [...note.comments, ...comments],
     commentCount: note.commentCount + comments.length,
-    updatedAt: new Date().toISOString(),
+    updatedAt: appNowISO(),
   };
   const notifications = shouldNotifyUser ? [
     reaction.likeCount > 0 ? makeXiaohongshuNotification({
@@ -1567,7 +1568,7 @@ export function applyCharacterReaction(note: XiaohongshuNote, character: Charact
     recentSaveNames: reaction.saved ? addNames(note.recentSaveNames, [displayName]) : note.recentSaveNames,
     comments: comment.text ? [...note.comments, comment] : note.comments,
     commentCount: note.commentCount + (comment.text ? 1 : 0),
-    updatedAt: new Date().toISOString(),
+    updatedAt: appNowISO(),
   };
   let threadNotifications: ReturnType<typeof makeXiaohongshuNotification>[] = [];
   let threadComments: XiaohongshuComment[] = [];
@@ -1637,7 +1638,7 @@ export function applyNpcCommentReply(note: XiaohongshuNote, reaction: ParsedXiao
     ...note,
     comments: [...note.comments, ...comments],
     commentCount: note.commentCount + comments.length,
-    updatedAt: new Date().toISOString(),
+    updatedAt: appNowISO(),
   };
   const notifications = shouldNotifyUser ? comments.map(comment => makeXiaohongshuNotification({
     type: "comment" as const,
@@ -1675,7 +1676,7 @@ export function applyNpcMoreComments(note: XiaohongshuNote, reaction: ParsedXiao
     ...note,
     comments: [...note.comments, ...comments],
     commentCount: note.commentCount + comments.length,
-    updatedAt: new Date().toISOString(),
+    updatedAt: appNowISO(),
   };
 }
 
@@ -1706,7 +1707,7 @@ export function applyCharacterCommentReply(note: XiaohongshuNote, character: Cha
     recentSaveNames: reaction.saved ? addNames(note.recentSaveNames, [displayName]) : note.recentSaveNames,
     comments: comment.text ? [...note.comments, comment] : note.comments,
     commentCount: note.commentCount + (comment.text ? 1 : 0),
-    updatedAt: new Date().toISOString(),
+    updatedAt: appNowISO(),
   };
   let threadNotifications: ReturnType<typeof makeXiaohongshuNotification>[] = [];
   let threadComments: XiaohongshuComment[] = [];
@@ -1793,7 +1794,7 @@ export function applyCharacterActivityComment(args: {
     recentSaveNames: saved ? addNames(note.recentSaveNames, [displayName]) : note.recentSaveNames,
     comments: [...note.comments, mainComment],
     commentCount: note.commentCount + 1,
-    updatedAt: new Date().toISOString(),
+    updatedAt: appNowISO(),
   };
   let threadComments: XiaohongshuComment[] = [];
   let threadNotifications: ReturnType<typeof makeXiaohongshuNotification>[] = [];
@@ -1868,7 +1869,7 @@ export function applyCharacterMentionReply(note: XiaohongshuNote, character: Cha
     ...note,
     comments: comment.text ? [...note.comments, comment] : note.comments,
     commentCount: note.commentCount + (comment.text ? 1 : 0),
-    updatedAt: new Date().toISOString(),
+    updatedAt: appNowISO(),
   };
   let threadNotifications: ReturnType<typeof makeXiaohongshuNotification>[] = [];
   let threadComments: XiaohongshuComment[] = [];

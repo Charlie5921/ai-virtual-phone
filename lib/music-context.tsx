@@ -2,6 +2,7 @@
 "use client";
 
 import { createContext, useContext, useState, useRef, useCallback, useEffect, useMemo, type ReactNode } from "react";
+import { appNowISO } from "./app-clock";
 import type { MusicTrack } from "./music-storage";
 import { getAudioBlob, markTrackPlayed } from "./music-storage";
 import { findPlayableMatch, getNeteaseLyrics, getNeteasePlayUrl, getNeteasePlayInfo, getNeteaseSongDetail } from "./music-service";
@@ -226,7 +227,7 @@ export function MusicProvider({ children }: { children: ReactNode }) {
             const url = URL.createObjectURL(blob);
             blobUrlRef.current = url;
             audio.src = url;
-            const playedAt = new Date().toISOString();
+            const playedAt = appNowISO();
             void markTrackPlayed(track.id, playedAt).catch(() => undefined);
             track = { ...track, lastPlayedAt: playedAt };
         }
@@ -401,7 +402,7 @@ export function MusicProvider({ children }: { children: ReactNode }) {
                 coverUrl: detail?.coverUrl || r.coverUrl,
                 lyrics,
                 liked: false,
-                addedAt: new Date().toISOString(),
+                addedAt: appNowISO(),
             };
             setFloatDismissed(false);
             setQueueRaw(prev => prev.some(item => item.id === track.id) ? prev : [track, ...prev]);

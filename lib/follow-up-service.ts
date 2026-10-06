@@ -21,6 +21,7 @@ import {
     type OfflineLockData,
 } from "./chat-storage";
 import type { ChatMessage, StateValue } from "./chat-storage";
+import { appNowISO, appNowMs } from "./app-clock";
 import { kvGet } from "./kv-db";
 import { generateChatCompletion, flattenCompletionResult } from "./chat-engine";
 import { armFollowUpBailout, armIdleReconnectBailout, cancelBailoutKey, cancelBailoutPrefix, cancelFollowUpBailout, startBailoutHeartbeat } from "./push-bailout-client";
@@ -444,7 +445,7 @@ async function fireFollowUp(sched: { sessionId: string; count: number; delaySec?
 
         // Find the last user message timestamp to calculate silence duration
         const lastUserMsg = [...latestMessages].reverse().find(m => m.role === "user");
-        const lastUserTime = lastUserMsg ? new Date(lastUserMsg.createdAt).getTime() : Date.now();
+        const lastUserTime = lastUserMsg ? new Date(lastUserMsg.createdAt).getTime() : appNowMs();
 
         const isOfflineMeetingActive = typeof window !== "undefined"
             ? (kvGet("chat_offline_invite_active_session_" + session.id) === "1" || kvGet("offline_invite_active_session_" + session.id) === "1")
@@ -474,7 +475,7 @@ async function fireFollowUp(sched: { sessionId: string; count: number; delaySec?
             annotatedMessages.push(msg);
         }
 
-        const nowMs = Date.now();
+        const nowMs = appNowMs();
         const finalSilenceSec = Math.round((nowMs - lastUserTime) / 1000);
         const silenceHintContent = isOfflineMeetingActive
             ? `[特殊情境·线下共处互动]：你们双方此刻正处于现实面对面的线下约会/共处中。对方刚才切回手机后有片刻安静未在微信发信，你正坐在对方身边/对面看着对方看手机。请根据你的性格与当下氛围，自如主动在微信上给对方发一条消息（如：抬头调侃打趣、敲桌面提醒对方抬头看你、顺着情趣发个好玩的表情包逗对方、或轻声关切询问等，完全自由发挥，拒绝刻板模板）。【绝对严禁以为相隔两地而问“你在哪”、“怎么不理我”等出戏断片的话】！`
@@ -487,7 +488,7 @@ async function fireFollowUp(sched: { sessionId: string; count: number; delaySec?
                 role: "system",
                 content: silenceHintContent,
                 status: "sent",
-                createdAt: new Date().toISOString(),
+                createdAt: appNowISO(),
             },
         ];
 
@@ -597,7 +598,7 @@ async function fireIdleReconnect(rule: IdleReconnectRule, lastUserAt: number) {
         void cancelBailoutPrefix(`idle:${rule.id}:`);
 
         const latestMessages = loadChatMessages(session.id);
-        const elapsedMinutes = Math.max(1, Math.round((Date.now() - lastUserAt) / 60000));
+        const elapsedMinutes = Math.max(1, Math.round((appNowMs() - lastUserAt) / 60000));
 
         backgroundGeneratingSessions.add(session.id);
         window.dispatchEvent(new CustomEvent("followup-started", { detail: { sessionId: session.id } }));
@@ -842,7 +843,7 @@ export function handleFollowUpMediaAction(
         updateMessageMediaData(targetMsg.id, {
             ...targetMsg.mediaData,
             status: newStatus,
-            paymentResolvedAt: new Date().toISOString(),
+            paymentResolvedAt: appNowISO(),
             paymentPayerName: charName,
         });
     } else {

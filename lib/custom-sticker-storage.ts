@@ -12,6 +12,7 @@ import {
     checkAnimatedAssetSize,
 } from "./theme-storage";
 import { kvGet, kvSet, registerKvMigration } from "./kv-db";
+import { appNowISO } from "./app-clock";
 
 const PACKS_KEY = "ai_phone_sticker_packs_v1";
 const ASSIGN_KEY = "ai_phone_sticker_assign_v1";
@@ -94,7 +95,7 @@ export function createStickerPack(name: string, note = ""): StickerPack {
         // 空备注不落字段，保持与 note?: string 的可选语义一致
         ...(cleanedNote ? { note: cleanedNote } : {}),
         stickers: [],
-        createdAt: new Date().toISOString(),
+        createdAt: appNowISO(),
     };
     const packs = readPacks();
     packs.push(pack);

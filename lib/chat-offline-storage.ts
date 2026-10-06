@@ -1,4 +1,5 @@
 import { loadChatSessions } from "./chat-storage";
+import { appNowISO } from "./app-clock";
 import { formatChatTimestamp } from "./llm-prompt-assembler";
 import { kvGet, kvRemove, kvSet, registerDynamicPrefix } from "./kv-db";
 
@@ -113,7 +114,7 @@ export function appendChatOfflineTurn(input: {
         reasoningText: input.reasoningText,
         thinkingText: input.thinkingText,
         thinkingTag: input.thinkingTag,
-        createdAt: new Date().toISOString(),
+        createdAt: appNowISO(),
     };
     saveChatOfflineTurns(input.sessionId, [...loadChatOfflineTurns(input.sessionId), turn]);
     return turn;

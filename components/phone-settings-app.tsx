@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, createContext, type CSSProperties, type ReactNode } from "react";
-import { Activity, Check, ChevronRight, Clock, Database, FileText, Fingerprint, Globe, HardDrive, Image, Info, KeyRound, Laptop, Layers, Link2, Loader2, LogOut, MessageSquare, Mic, SlidersHorizontal, UserCircle, Wrench, X, CloudUpload } from "lucide-react";
+import { appNow, loadAppClockConfig, offsetFromTargetTime, saveAppClockConfig } from "@/lib/app-clock";
+import { Activity, CalendarClock, Check, ChevronRight, Clock, Database, FileText, Fingerprint, Globe, HardDrive, Image, Info, KeyRound, Laptop, Layers, Link2, Loader2, LogOut, MessageSquare, Mic, SlidersHorizontal, UserCircle, Wrench, X, CloudUpload } from "lucide-react";
 import { ConfirmDialog } from "./ui/modal";
 import { useAccount } from "@/lib/account-context";
 import { isSelfHostedModeEnabled } from "@/lib/self-hosting";
@@ -84,6 +85,34 @@ const keepAliveIconStyle = {
     "--icon-color": CONTENT_APP_ACCENTS.chat,
 } as CSSProperties;
 
+const customTimeIconStyle = {
+    "--icon-color": CONTENT_APP_ACCENTS.diary,
+} as CSSProperties;
+
+function toDateTimeLocalValue(date: Date): string {
+    const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function describeClockOffset(offsetMs: number): string {
+    const ahead = offsetMs > 0;
+    const totalMinutes = Math.round(Math.abs(offsetMs) / 60000);
+    const days = Math.floor(totalMinutes / 1440);
+    const hours = Math.floor((totalMinutes % 1440) / 60);
+    const minutes = totalMinutes % 60;
+    const parts: string[] = [];
+    if (days) parts.push(`${days} 天`);
+    if (hours) parts.push(`${hours} 小时`);
+    if (minutes || parts.length === 0) parts.push(`${minutes} 分钟`);
+    return `比真实时间${ahead ? "快" : "慢"} ${parts.join(" ")}`;
+}
+
+function formatClockPreview(date: Date): string {
+    const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
+    const weekday = ["日", "一", "二", "三", "四", "五", "六"][date.getDay()];
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())} 周${weekday}`;
+}
+
 const promptViewerIconStyle = {
     "--icon-color": BINDING_ACCENTS.preset,
 } as CSSProperties;
@@ -115,6 +144,10 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
     const [floatingDockEnabled, setFloatingDockEnabled] = useState(false);
     const [floatingDockSheetOpen, setFloatingDockSheetOpen] = useState(false);
     const [keepAlive, setKeepAlive] = useState(false);
+    const [customTimeEnabled, setCustomTimeEnabled] = useState(false);
+    const [customTimeOffsetMs, setCustomTimeOffsetMs] = useState(0);
+    const [customTimePicker, setCustomTimePicker] = useState("");
+    const [clockTick, setClockTick] = useState(0);
     // 角色电脑：施工中弹窗（返回 / 仍要看看）
     const pageBodyRef = useRef<HTMLDivElement | null>(null);
 
@@ -226,6 +259,31 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
         saveChatAppSettings({ ...loadChatAppSettings(), timeAware: next });
         onNotice(next ? "已开启全局真实时间感知" : "已关闭全局真实时间感知");
     }, [onNotice]);
+
+    const handleCustomTimeChange = useCallback((next: boolean) => {
+        setCustomTimeEnabled(next);
+        if (next) setCustomTimePicker(toDateTimeLocalValue(appNow()));
+        saveAppClockConfig({ enabled: next, offsetMs: loadAppClockConfig().offsetMs });
+        onNotice(next ? "已开启自定义时间" : "已恢复真实时间");
+    }, [onNotice]);
+
+    const handleCustomTimePick = useCallback((value: string) => {
+        if (!value) return;
+        const target = new Date(value);
+        if (Number.isNaN(target.getTime())) return;
+        const offsetMs = offsetFromTargetTime(target);
+        setCustomTimeOffsetMs(offsetMs);
+        saveAppClockConfig({ enabled: true, offsetMs });
+        setCustomTimeEnabled(true);
+        onNotice(`小手机的时间已设为 ${formatClockPreview(new Date(Date.now() + offsetMs))}`);
+    }, [onNotice]);
+
+    const handleCustomTimeReset = useCallback(() => {
+        setCustomTimeOffsetMs(0);
+        saveAppClockConfig({ enabled: customTimeEnabled, offsetMs: 0 });
+        setCustomTimePicker(toDateTimeLocalValue(new Date()));
+        onNotice("已对回真实时间");
+    }, [customTimeEnabled, onNotice]);
 
     const handlePromptViewerChange = useCallback((next: boolean) => {
         setPromptViewerEnabled(next);
@@ -355,7 +413,17 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
         setQuickActionEnabled(settings.quickActionEnabled === true);
         setFloatingDockEnabled(settings.floatingDockEnabled === true);
         setKeepAlive(loadKeepAlive());
+        const clock = loadAppClockConfig();
+        setCustomTimeEnabled(clock.enabled);
+        setCustomTimeOffsetMs(clock.offsetMs);
+        setCustomTimePicker(toDateTimeLocalValue(appNow()));
     }, []);
+
+    useEffect(() => {
+        if (currentPage !== "main") return;
+        const timer = window.setInterval(() => setClockTick(tick => tick + 1), 1000);
+        return () => window.clearInterval(timer);
+    }, [currentPage]);
 
     // Listen for mascot navigation mode (e.g. jump to worldbook/regex tab)
     useEffect(() => {
@@ -439,6 +507,44 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
                                     <div className="card-featured-desc">控制全局历史事件流中是否注入时间戳</div>
                                 </div>
                                 <Toggle checked={timeAware} onChange={handleTimeAwareChange} className="settings-toggle-control" />
+                            </div>
+                            <div className="app-card card-featured settings-toggle-card settings-custom-time-card">
+                                <span className="card-icon" style={customTimeIconStyle}>
+                                    <CalendarClock size={22} strokeWidth={1.75} />
+                                </span>
+                                <div className="card-featured-body">
+                                    <div className="card-featured-label">自定义时间</div>
+                                    <div className="card-featured-desc">小手机活在你设定的时间里，时钟照常走。消息、记录与 AI 时间都会跟随</div>
+                                </div>
+                                <Toggle checked={customTimeEnabled} onChange={handleCustomTimeChange} className="settings-toggle-control" />
+                                {customTimeEnabled ? (
+                                    <div className="settings-custom-time-panel">
+                                        <div className="settings-custom-time-now">
+                                            <span className="settings-custom-time-now-label">当前</span>
+                                            <span className="settings-custom-time-now-value" key={clockTick}>{formatClockPreview(appNow())}</span>
+                                        </div>
+                                        <label className="settings-custom-time-field">
+                                            <span className="settings-custom-time-field-label">调整到</span>
+                                            <input
+                                                type="datetime-local"
+                                                className="ui-input settings-custom-time-input"
+                                                value={customTimePicker}
+                                                onChange={(event) => {
+                                                    setCustomTimePicker(event.target.value);
+                                                    handleCustomTimePick(event.target.value);
+                                                }}
+                                            />
+                                        </label>
+                                        <div className="settings-custom-time-actions">
+                                            <span className="settings-custom-time-offset">
+                                                {customTimeOffsetMs === 0 ? "与真实时间一致" : describeClockOffset(customTimeOffsetMs)}
+                                            </span>
+                                            <button type="button" className="ui-btn ui-btn-ghost settings-custom-time-reset" onClick={handleCustomTimeReset} disabled={customTimeOffsetMs === 0}>
+                                                对回现在
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : null}
                             </div>
                             <div className="app-card card-featured settings-toggle-card">
                                 <span className="card-icon card-icon-glass">

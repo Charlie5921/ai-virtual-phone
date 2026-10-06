@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { appNow } from "@/lib/app-clock";
 import { createPortal } from "react-dom";
 import type { WidgetInstance, WidgetType } from "@/lib/widget-types";
 import { WIDGET_SIZE_CELLS, WIDGET_CATALOG } from "@/lib/widget-types";
@@ -1087,7 +1088,7 @@ function MusicWidget({
    3. Calendar — 日历 (2x2)
    ══════════════════════════════════════════ */
 function CalendarWidget() {
-  const now = new Date();
+  const now = appNow();
   const year = now.getFullYear();
   const monthNum = now.getMonth() + 1;
   const day = now.getDate();
@@ -1128,10 +1129,10 @@ function CalendarWidget() {
    4. Clock + Date — 时钟+日期 (2x2)
    ══════════════════════════════════════════ */
 function ClockWidget() {
-  const [time, setTime] = useState(() => new Date());
+  const [time, setTime] = useState(() => appNow());
 
   useEffect(() => {
-    const timer = setInterval(() => setTime(new Date()), 1000);
+    const timer = setInterval(() => setTime(appNow()), 1000);
     return () => clearInterval(timer);
   }, []);
 
@@ -1166,10 +1167,10 @@ function ClockWidget() {
    5.5. Large Time — 极简大屏数字时钟 (4x2)
    ══════════════════════════════════════════ */
 function LargeTimeWidget() {
-  const [time, setTime] = useState(() => new Date());
+  const [time, setTime] = useState(() => appNow());
 
   useEffect(() => {
-    const timer = setInterval(() => setTime(new Date()), 1000);
+    const timer = setInterval(() => setTime(appNow()), 1000);
     return () => clearInterval(timer);
   }, []);
 
@@ -1254,7 +1255,7 @@ function LoveNoteWidget({
   const customText = typeof config?.text === "string" ? config.text : "";
   const noteText = customText || LOVE_NOTES_DEFAULT[noteIdx];
 
-  const now = new Date();
+  const now = appNow();
   const month = now.getMonth() + 1;
   const day = now.getDate();
 
@@ -1347,7 +1348,7 @@ function InterviewMagazineWidget({
   const [lineIdx] = useState(() => Math.floor(Math.random() * INTERVIEW_MAGAZINE_LINES.length));
   const line = INTERVIEW_MAGAZINE_LINES[lineIdx];
   const quote = INTERVIEW_MAGAZINE_QUOTES[lineIdx];
-  const now = new Date();
+  const now = appNow();
   const month = now.getMonth() + 1;
   const day = now.getDate();
   const imageDataUrl = typeof config?.imageDataUrl === "string" ? config.imageDataUrl : undefined;
@@ -1406,7 +1407,7 @@ function KaomojiWidget({
   widgetId: string;
   onConfigChange?: (widgetId: string, config: Record<string, unknown>) => void;
 }) {
-  const [time, setTime] = useState(() => new Date());
+  const [time, setTime] = useState(() => appNow());
   const [kaomojiIdx] = useState(() => Math.floor(Math.random() * KAOMOJI_SETS.length));
   const [identity] = useState(() => resolveUserIdentity());
 
@@ -1417,7 +1418,7 @@ function KaomojiWidget({
   const [editGreeting, setEditGreeting] = useState(customGreeting);
 
   useEffect(() => {
-    const timer = setInterval(() => setTime(new Date()), 1000);
+    const timer = setInterval(() => setTime(appNow()), 1000);
     return () => clearInterval(timer);
   }, []);
 
@@ -1980,7 +1981,7 @@ function ReceiptWidget({ config, widgetId, onConfigChange, preview }: any) {
       <div className="wg-receipt-paper">
         <div className="wg-receipt-meta">
           <span>STORE #042</span>
-          <span>{new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short' })}</span>
+          <span>{appNow().toLocaleDateString('en-US', { day: '2-digit', month: 'short' })}</span>
         </div>
         <div className="wg-receipt-header">SOUL MART</div>
         <div className="wg-receipt-divider" />
@@ -2103,7 +2104,7 @@ function PostcardWidget({ config, widgetId, onConfigChange, preview }: any) {
         <div className="wg-pc-bottom-layout">
           <div className="wg-pc-badge">
             <span>EST.</span>
-            <span>{new Date().getFullYear()}</span>
+            <span>{appNow().getFullYear()}</span>
             <div className="wg-pc-micro-divider" />
             <span className="wg-pc-micro-jp">記憶の破片</span>
           </div>

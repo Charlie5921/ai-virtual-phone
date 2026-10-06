@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { appNowISO } from "@/lib/app-clock";
 import { ChevronLeft, Palette, Settings } from "lucide-react";
 import { loadBooks, addBook, deleteBook, saveChapters, loadProgress, saveRawFile } from "@/lib/reading-storage";
 import { decodeTxtArrayBuffer, parseTxtContent, parseEpubFile, PDF_PAGES_PER_CHAPTER } from "@/lib/reading-parser";
@@ -182,7 +183,7 @@ export function ReadingShelf({ onOpenBook, onClose, appearance, backgroundUrl, o
             fileName: file.name,
             fileSize: file.size,
             format: detectedFormat,
-            updatedAt: new Date().toISOString(),
+            updatedAt: appNowISO(),
         });
 
         try {
@@ -199,7 +200,7 @@ export function ReadingShelf({ onOpenBook, onClose, appearance, backgroundUrl, o
                     fileName: file.name,
                     fileSize: file.size,
                     format: "txt",
-                    updatedAt: new Date().toISOString(),
+                    updatedAt: appNowISO(),
                 });
                 const readingConfig = loadReadingInteractionConfig();
                 const { text } = decodeTxtArrayBuffer(await file.arrayBuffer(), readingConfig.txtEncoding);
@@ -214,7 +215,7 @@ export function ReadingShelf({ onOpenBook, onClose, appearance, backgroundUrl, o
                     fileName: file.name,
                     fileSize: file.size,
                     format: "epub",
-                    updatedAt: new Date().toISOString(),
+                    updatedAt: appNowISO(),
                 });
                 const buffer = await file.arrayBuffer();
                 importStage = "解析 EPUB 内容";
@@ -225,7 +226,7 @@ export function ReadingShelf({ onOpenBook, onClose, appearance, backgroundUrl, o
                     fileName: file.name,
                     fileSize: file.size,
                     format: "epub",
-                    updatedAt: new Date().toISOString(),
+                    updatedAt: appNowISO(),
                 });
                 parsed = await parseEpubFile(buffer, file.name);
                 format = "epub";
@@ -239,7 +240,7 @@ export function ReadingShelf({ onOpenBook, onClose, appearance, backgroundUrl, o
                     fileName: file.name,
                     fileSize: file.size,
                     format: "pdf",
-                    updatedAt: new Date().toISOString(),
+                    updatedAt: appNowISO(),
                 });
                 parsed = {
                     title: file.name.replace(/\.[^.]+$/, "") || "未命名",
@@ -260,7 +261,7 @@ export function ReadingShelf({ onOpenBook, onClose, appearance, backgroundUrl, o
                 author: parsed.author,
                 format,
                 totalChapters: parsed.chapters.length,
-                createdAt: new Date().toISOString(),
+                createdAt: appNowISO(),
             };
 
             const chapters: BookChapter[] = parsed.chapters.map((ch, i) => {
@@ -289,7 +290,7 @@ export function ReadingShelf({ onOpenBook, onClose, appearance, backgroundUrl, o
                 fileName: file.name,
                 fileSize: file.size,
                 format,
-                updatedAt: new Date().toISOString(),
+                updatedAt: appNowISO(),
             });
             await addBook(book);
             await saveChapters(bookId, chapters);
@@ -303,7 +304,7 @@ export function ReadingShelf({ onOpenBook, onClose, appearance, backgroundUrl, o
                         fileName: file.name,
                         fileSize: file.size,
                         format,
-                        updatedAt: new Date().toISOString(),
+                        updatedAt: appNowISO(),
                     });
                     await saveRawFile(bookId, rawFile);
                 } catch (saveErr) {
@@ -317,7 +318,7 @@ export function ReadingShelf({ onOpenBook, onClose, appearance, backgroundUrl, o
                         fileSize: file.size,
                         format,
                         detail: built.detail || built.summary,
-                        updatedAt: new Date().toISOString(),
+                        updatedAt: appNowISO(),
                     });
                     return;
                 }
@@ -338,7 +339,7 @@ export function ReadingShelf({ onOpenBook, onClose, appearance, backgroundUrl, o
                 fileSize: file.size,
                 format,
                 detail: built.detail || built.summary,
-                updatedAt: new Date().toISOString(),
+                updatedAt: appNowISO(),
             });
         } finally {
             setImporting(false);

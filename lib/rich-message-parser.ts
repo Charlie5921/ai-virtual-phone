@@ -10,6 +10,7 @@
  */
 
 import type { ChatMessage } from "./chat-storage";
+import { appNowISO } from "./app-clock";
 import type { StateValue } from "./chat-storage";
 import { parseStateValues, mergeStateValues } from "./state-value-parser";
 import { stripActionShells } from "./action-parser";
@@ -114,7 +115,7 @@ const RICH_PATTERNS: {
                 paymentRequestItemsText: m[2].trim(),
                 label: "代付请求",
                 status: "pending" as const,
-                paymentRequestedAt: new Date().toISOString(),
+                paymentRequestedAt: appNowISO(),
             },
         }),
     },
@@ -132,7 +133,7 @@ const RICH_PATTERNS: {
                     recipientName: m[2].trim(),
                     giftMerchantLabel: "角色赠礼",
                     giftPriceLabel: "心意礼物",
-                    giftSentAt: new Date().toISOString(),
+                    giftSentAt: appNowISO(),
                 },
             };
         },
@@ -150,7 +151,7 @@ const RICH_PATTERNS: {
                     label: giftName,
                     giftMerchantLabel: "角色赠礼",
                     giftPriceLabel: "心意礼物",
-                    giftSentAt: new Date().toISOString(),
+                    giftSentAt: appNowISO(),
                 },
             };
         },

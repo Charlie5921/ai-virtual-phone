@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo, useLayoutEffect } from "react";
+import { appNowISO } from "@/lib/app-clock";
 import { Bot, ChevronDown, ChevronRight, Languages, Menu, Minus, PenLine, Rocket, SendHorizontal, X, ZoomIn } from "lucide-react";
 import {
     loadChapters,
@@ -1487,7 +1488,7 @@ export function ReadingViewer({ book, onBack }: Props) {
                     characterId: companionId,
                     characterName: companion.name,
                     content: action.content,
-                    createdAt: new Date().toISOString(),
+                    createdAt: appNowISO(),
                 };
                 await saveAnnotation(annotation);
                 nextAnnotations = [...nextAnnotations, annotation];
@@ -1917,7 +1918,7 @@ export function ReadingViewer({ book, onBack }: Props) {
             progressTotal,
             progressScope,
             readingMode: isPdf ? undefined : (isScrollMode ? "scroll" : "page"),
-            lastReadAt: new Date().toISOString(),
+            lastReadAt: appNowISO(),
         };
         saveProgress(progress);
     }, [book.id, chapterIndex, chapters.length, chaptersLoaded, companionId, isPdf, isScrollMode, pdfCurrentPage, pdfTotalPages, scrollFraction, txtPage, txtTotalPages]);
