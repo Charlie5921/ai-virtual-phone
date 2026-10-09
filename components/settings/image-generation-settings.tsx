@@ -174,6 +174,7 @@ export function ImageGenerationSettings() {
         const activePreset = presets.find(p => p.id === nai?.activePresetId) || presets[0];
         return {
             apiKey: nai?.apiKey || "",
+            baseUrl: nai?.baseUrl || "https://image.novelai.net",
             activePresetId: activePreset.id,
             presets,
             activePreset,
@@ -185,6 +186,7 @@ export function ImageGenerationSettings() {
             ...settings,
             novelai: {
                 apiKey: naiSettings.apiKey,
+                baseUrl: naiSettings.baseUrl,
                 activePresetId: naiSettings.activePresetId,
                 presets: naiSettings.presets,
                 ...patch,
@@ -269,11 +271,11 @@ export function ImageGenerationSettings() {
         }
         setIsFetchingNaiModels(true);
         try {
-            const fetched = await fetchNovelAiModels(naiSettings.apiKey);
+            const fetched = await fetchNovelAiModels(naiSettings.apiKey, naiSettings.baseUrl);
             setNaiModels(fetched);
             setNaiTokenStatus({
                 success: true,
-                message: `NovelAI Token 有效，已加载 ${fetched.length} 个常用模型。`,
+                message: `NovelAI Token 有效，已加载 ${fetched.length} 个模型。`,
             });
         } catch (err) {
             setNaiTokenStatus({ success: false, message: err instanceof Error ? err.message : String(err) });
@@ -356,7 +358,7 @@ export function ImageGenerationSettings() {
                         })}
                     >
                         <option value="openai">OpenAI 兼容 (通用模型 / DALL-E / Flux / SD 中转等)</option>
-                        <option value="novelai">NovelAI 原生接口 (官方 API)</option>
+                        <option value="novelai">NovelAI 原生接口（官方 / 中转）</option>
                     </Select>
                 </div>
 
@@ -377,7 +379,12 @@ export function ImageGenerationSettings() {
                     /* --- NovelAI 配置面板 --- */
                     <>
                         <div className="flex flex-col gap-1">
-                            <label className="menu-desc ml-1">NovelAI API Token</label>
+                            <label htmlFor="novelai-base-url" className="menu-desc ml-1">NovelAI Base URL</label>
+                            <Input id="novelai-base-url" value={naiSettings.baseUrl} onChange={event => { updateNovelAi({ baseUrl: event.target.value }); setNaiTokenStatus(null); }} placeholder="https://image.novelai.net" />
+                            <span className="menu-desc ml-1">中转示例：https://create.suanbohe.com/api。使用 NovelAI 原生格式，自动拼接 /ai/generate-image；跨域失败时选择服务端转发。</span>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                            <label className="menu-desc ml-1">NovelAI API Token / 中转 Key</label>
                             <Input
                                 type="password"
                                 value={naiSettings.apiKey}
@@ -387,7 +394,7 @@ export function ImageGenerationSettings() {
                                 }}
                                 placeholder="pst-..."
                             />
-                            <span className="menu-desc ml-1">可在 NovelAI 官网 Account 页面获取 Persistent API Token。</span>
+                            <span className="menu-desc ml-1">官方填 Persistent API Token，中转填该站提供的 Key。</span>
                             {naiTokenStatus && (
                                 <div role={naiTokenStatus.success ? "status" : "alert"} className="mt-2">
                                     <Alert variant={naiTokenStatus.success ? "success" : "danger"}>

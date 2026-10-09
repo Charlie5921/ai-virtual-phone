@@ -1,3 +1,5 @@
+import { lookup } from "node:dns/promises";
+import { novelAiGenerationUrl, isOfficialNovelAi } from "@/lib/novelai-endpoint";
 import { NextRequest, NextResponse } from "next/server";
 import { ProxyAgent, type Dispatcher } from "undici";
 import JSZip from "jszip";
@@ -208,12 +210,22 @@ async function runNovelAiGeneration(input: ImageGenerationRequest): Promise<{ st
 
     const { width, height } = getNovelAiResolution(input.size);
 
-    const url = "https://image.novelai.net/ai/generate-image";
+    let url: string;
+    try { url = novelAiGenerationUrl(input.baseUrl); }
+    catch (error) { return { status: 400, body: { error: error instanceof Error ? error.message : "NovelAI Base URL 无效" } }; }
+    if (!isOfficialNovelAi(input.baseUrl)) {
+      const addresses = await lookup(new URL(url).hostname, { all: true });
+      const privateAddress = (address: string) => {
+        if (address.includes(":")) return /^(::|f[cd]|fe[89ab])/i.test(address);
+        const [a, b] = address.split(".").map(Number);
+        return a === 0 || a === 10 || a === 127 || a >= 224 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || (a === 198 && (b === 18 || b === 19));
+      };
+      if (!addresses.length || addresses.some(item => privateAddress(item.address))) return { status: 400, body: { error: "NovelAI 中转地址不能指向本地或内网" } };
+    }
     const headers: Record<string, string> = {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
-      Origin: "https://novelai.net",
-      Referer: "https://novelai.net/",
+      ...(isOfficialNovelAi(input.baseUrl) ? { Origin: "https://novelai.net", Referer: "https://novelai.net/" } : {}),
     };
 
     const parameters: Record<string, unknown> = {
@@ -248,7 +260,7 @@ async function runNovelAiGeneration(input: ImageGenerationRequest): Promise<{ st
     const timeout = setTimeout(() => controller.abort(), 120_000);
     let res: Response;
     try {
-      res = await externalFetch(url, { method: "POST", headers, body, signal: controller.signal });
+      res = await externalFetch(url, { method: "POST", headers, body, signal: controller.signal, redirect: "error" });
     } finally {
       clearTimeout(timeout);
     }

@@ -221,6 +221,8 @@ export type NovelAiPreset = {
 };
 
 export type NovelAiSettings = {
+    /** 空值默认官方，支持兼容 NovelAI 原生格式的中转 Base URL。 */
+    baseUrl?: string;
     apiKey: string;
     activePresetId: string;
     presets: NovelAiPreset[];

@@ -10,16 +10,16 @@ export function FloatingConsole() {
   const [tab, setTab] = useState<'calls' | 'errors' | 'models'>('calls');
   const [logs, setLogs] = useState<DebugInfo[]>([]);
   const [notice, setNotice] = useState('');
-  const [position, setPosition] = useState({ x: 12, y: 150 });
   const panelRef = useRef<HTMLElement>(null);
-  const drag = useRef<{ x: number; y: number; startX: number; startY: number; moved: boolean } | null>(null);
   const hiddenIds = useRef(new Set<string>());
   useEffect(() => {
+    const show = () => setOpen(true);
+    window.addEventListener('open-debug-console', show);
     const onError = (event: ErrorEvent) => addConsoleRecord({ kind: 'error', title: event.message || '页面运行错误', detail: diagnosticMessage(event.error || event.message) });
     const onReject = (event: PromiseRejectionEvent) => addConsoleRecord({ kind: 'error', title: '未处理的异步错误', detail: diagnosticMessage(event.reason) });
     window.addEventListener('error', onError);
     window.addEventListener('unhandledrejection', onReject);
-    return () => { window.removeEventListener('error', onError); window.removeEventListener('unhandledrejection', onReject); };
+    return () => { window.removeEventListener('open-debug-console', show); window.removeEventListener('error', onError); window.removeEventListener('unhandledrejection', onReject); };
   }, []);
   useEffect(() => {
     if (!open) return;
@@ -27,10 +27,6 @@ export function FloatingConsole() {
     refresh(); const timer = window.setInterval(refresh, 2000);
     return () => window.clearInterval(timer);
   }, [open]);
-  useEffect(() => {
-    const clamp = () => setPosition(p => ({ x: Math.max(0, Math.min(p.x, window.innerWidth - 64)), y: Math.max(0, Math.min(p.y, window.innerHeight - 64)) }));
-    window.addEventListener('resize', clamp); return () => window.removeEventListener('resize', clamp);
-  }, []);
   useEffect(() => {
     if (!open) return;
     const escape = (e: KeyboardEvent) => {
@@ -52,13 +48,6 @@ export function FloatingConsole() {
     catch { setNotice('复制失败，请长按详情手动复制'); }
   }
   return <>
-    <button className="fc-launch" style={{ left: position.x, top: position.y }} aria-label="打开悬浮控制台" title="拖动移动，点击查看日志"
-      onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); drag.current = { x: e.clientX, y: e.clientY, startX: position.x, startY: position.y, moved: false }; }}
-      onPointerMove={e => { const d = drag.current; if (!d) return; if (Math.abs(e.clientX-d.x) + Math.abs(e.clientY-d.y) > 5) d.moved = true; if (d.moved) setPosition({ x: Math.max(0, Math.min(window.innerWidth-64, d.startX+e.clientX-d.x)), y: Math.max(0, Math.min(window.innerHeight-64, d.startY+e.clientY-d.y)) }); }}
-      onPointerUp={() => { if (!drag.current?.moved) setOpen(true); }} onPointerCancel={() => { drag.current = null; }}
-      onClick={e => { if (e.detail === 0) setOpen(true); drag.current = null; }}>
-      日志{failed.length > 0 && <span>{failed.length}</span>}
-    </button>
     {open && <div className="fc-backdrop" onClick={() => setOpen(false)}><section ref={panelRef} role="dialog" aria-modal="true" aria-label="悬浮控制台" className="fc-panel" onClick={e => e.stopPropagation()}>
       <header><div><small>DEBUG CONSOLE</small><h2>调用与错误记录</h2></div><button autoFocus aria-label="关闭控制台" onClick={() => setOpen(false)}>×</button></header>
       <p>本次页面运行 {records.length} 条诊断 · {failed.length} 条异常 · 最多保留 100 条</p>

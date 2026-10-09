@@ -475,6 +475,9 @@ export function QuickActionFloat() {
                     </div>
 
                     <div className="quick-action-body">
+                        <button type="button" className="quick-action-icon-btn" style={{ width: '100%', justifyContent: 'flex-start', gap: 8, padding: 12 }} onClick={() => { handleClose(); window.dispatchEvent(new Event('open-debug-console')); }}>
+                            <Code2 size={18} />调用与错误日志
+                        </button>
                         <div className="quick-action-tabs" role="tablist" aria-label="绑定范围">
                             <button
                                 type="button"
