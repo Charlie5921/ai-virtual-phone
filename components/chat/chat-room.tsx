@@ -11,6 +11,7 @@ import { isKnownStickerLabel } from "@/lib/sticker-data";
 import { translateReasoningText } from "@/lib/reasoning-translate";
 import { MessageBubble, MediaDetailModal, prewarmStickerCache, BilingualTextBlock, isStandaloneHtmlPreviewContent, normalizeTextBubbleContent } from "./message-bubble";
 import { GeneratedImageErrorDialog } from "./generated-image-error-dialog";
+import { TruthGameModal } from "./truth-game-modal";
 import { FakeVideoInputModal, PhotoInputModal, TextPhotoModal, VoiceRecordModal, RedPacketModal, LocationInputModal, SystemInstructionModal } from "./rich-input-modals";
 import { EmojiPanel, StickerPanel } from "./emoji-panel";
 import { StickerSearchSuggest } from "./sticker-search-suggest";
@@ -1325,7 +1326,7 @@ type PendingMessageJump = {
 };
 
 const TRANSIENT_MESSAGE_PREFIX = "ui-transient-";
-type RichModalKind = "photo" | "video" | "text_photo" | "red_packet" | "transfer" | "location" | "transfer_target" | "voice_msg" | "gift" | "system_instruction";
+type RichModalKind = "truth_game" | "photo" | "video" | "text_photo" | "red_packet" | "transfer" | "location" | "transfer_target" | "voice_msg" | "gift" | "system_instruction";
 type ChatTextInputHandle = {
     appendText: (text: string, options?: { focus?: boolean }) => void;
     clear: () => void;
@@ -1504,6 +1505,8 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
     // 表情包搜索联想：ESC/失焦置 true 隐藏，输入变化重新开启
     const [suggestClosed, setSuggestClosed] = useState(false);
+    const [plusPage, setPlusPage] = useState(0);
+    useEffect(() => { if (!showPlusMenu) setPlusPage(0); }, [showPlusMenu]);
     // 围观群/被禁言：输入与富媒体入口全部锁定，只留线下切换和生成按钮
     const [muteNowTick, setMuteNowTick] = useState(() => Date.now());
     useEffect(() => {
@@ -1570,6 +1573,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
         { icon: <Gift size={22} strokeWidth={1.5} color="var(--c-text)" />, label: "礼物", onClick: () => onOpenRichModal("gift") },
         { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--c-text)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></svg>, label: "位置", onClick: () => onOpenRichModal("location") },
         { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--c-text)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="22" /><line x1="8" y1="22" x2="16" y2="22" /></svg>, label: "语音条", onClick: () => onOpenRichModal("voice_msg") },
+        ...(!isGroup ? [{ icon: <span aria-hidden="true" style={{ fontSize: 25 }}>⚄</span>, label: "真心话小游戏", onClick: () => onOpenRichModal("truth_game") }] : []),
         ...customPlusActions.map(action => ({
             icon: action.appIconDataUrl
                 ? <span className="chat-plus-custom-app-icon" style={{ backgroundImage: `url(${action.appIconDataUrl})` }} aria-hidden="true" />
@@ -1579,6 +1583,8 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
         })),
     ];
 
+    const plusPageCount = Math.ceil(plusMenuItems.length / 12);
+    const visiblePlusPage = Math.min(plusPage, plusPageCount - 1);
     return (
         <div className="chat-input-bar chat-room-main-pane flex flex-col" data-ui="input">
             {theaterMode && (
@@ -1723,7 +1729,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
 
             {showPlusMenu && (
                 <div className="chat-plus-menu">
-                    {plusMenuItems.map((item, i) => (
+                    {plusMenuItems.slice(visiblePlusPage * 12, (visiblePlusPage + 1) * 12).map((item, i) => (
                         <div key={`${item.label}-${i}`} onClick={item.onClick} className="chat-plus-menu-item flex flex-col items-center gap-1.5 cursor-pointer" {...(item.active ? { "data-active": "" } : {})}>
                             <div className="chat-plus-icon-box">
                                 {item.icon}
@@ -1733,6 +1739,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
                     ))}
                 </div>
             )}
+            {showPlusMenu && plusPageCount > 1 && <div className="truth-plus-pages"><button type="button" aria-label="上一页快捷操作" disabled={visiblePlusPage === 0} onClick={() => setPlusPage(visiblePlusPage - 1)}>‹ 上一页</button><span>{visiblePlusPage + 1} / {plusPageCount}</span><button type="button" aria-label="下一页快捷操作" disabled={visiblePlusPage + 1 === plusPageCount} onClick={() => setPlusPage(visiblePlusPage + 1)}>下一页 ›</button></div>}
             {showPlusMenu && (
                 <ChatPluginSlot name="chat.inputToolbar" slotProps={{ isGroup }} className="chat-plugin-input-toolbar" />
             )}
@@ -10441,6 +10448,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             )}
 
             {/* Rich Media Input Modals */}
+            {richModal === "truth_game" && !session.isGroup && <TruthGameModal key={session.id} sessionId={session.id} userName={userIdentity?.name || "你"} characterName={character?.name || "对方"} onSend={handleSendText} onClose={() => setRichModal(null)} />}
             {richModal === "voice_msg" && (
                 <VoiceRecordModal
                     characterId={session.contactId}
