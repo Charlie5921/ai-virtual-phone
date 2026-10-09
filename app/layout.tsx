@@ -1,3 +1,5 @@
+import { FloatingConsole } from "@/components/floating-console";
+import "@/components/floating-console.css";
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 
@@ -91,6 +93,7 @@ export default function RootLayout({
         <ChatPluginBootstrap />
         <ChatReasoningVisibilityController />
         {children}
+        <FloatingConsole />
       </body>
     </html>
   );
