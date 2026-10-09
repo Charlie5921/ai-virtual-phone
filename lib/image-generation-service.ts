@@ -1,3 +1,5 @@
+import { isValidNovelAiModel } from "./novelai-image-config";
+import { normalizeNovelAiBaseUrl, novelAiGenerationUrl, isOfficialNovelAi } from "./novelai-endpoint";
 import type { ImageGenerationSettings, NovelAiPreset } from "./settings-types";
 import { loadImageGenerationSettings, DEFAULT_NOVELAI_PRESET } from "./settings-storage";
 import JSZip from "jszip";
@@ -510,6 +512,7 @@ async function generateImageViaServer(params: {
 }
 
 async function generateNovelAiDirect(params: {
+  baseUrl?: string;
   apiKey: string;
   preset: NovelAiPreset;
   prompt: string;
@@ -520,7 +523,7 @@ async function generateNovelAiDirect(params: {
 
   const { width, height } = getNovelAiResolution(preset.resolution);
 
-  const url = "https://image.novelai.net/ai/generate-image";
+  const url = novelAiGenerationUrl(params.baseUrl);
   const headers: Record<string, string> = {
     Authorization: `Bearer ${apiKey}`,
     "Content-Type": "application/json",
@@ -598,6 +601,7 @@ async function generateNovelAiDirect(params: {
 }
 
 async function generateNovelAiViaServer(params: {
+  baseUrl?: string;
   apiKey: string;
   preset: NovelAiPreset;
   prompt: string;
@@ -619,6 +623,7 @@ async function generateNovelAiViaServer(params: {
       signal: controller.signal,
       body: JSON.stringify({
         provider: "novelai",
+        baseUrl: normalizeNovelAiBaseUrl(params.baseUrl),
         apiKey,
         model: normalizeNovelAiModel(preset.model),
         prompt,
@@ -690,14 +695,15 @@ async function generateNovelAiViaServer(params: {
   }
 }
 
-export async function fetchNovelAiModels(apiKey: string): Promise<string[]> {
+export async function fetchNovelAiModels(apiKey: string, baseUrl?: string): Promise<string[]> {
   const token = apiKey.trim();
   if (!token) throw new Error("请先填写 NovelAI API Token。");
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);
   try {
-    const res = await fetch("https://image.novelai.net/user/data", {
+    const official = isOfficialNovelAi(baseUrl);
+    const res = await fetch(`${normalizeNovelAiBaseUrl(baseUrl)}/${official ? "user/data" : "models"}`, {
       method: "GET",
       headers: { Authorization: `Bearer ${token}` },
       signal: controller.signal,
@@ -708,6 +714,13 @@ export async function fetchNovelAiModels(apiKey: string): Promise<string[]> {
         throw new Error("NovelAI API Token 无效或已失效，请重新获取后再试。");
       }
       throw new Error(`NovelAI Token 验证失败 ${res.status}${detail ? `: ${detail.slice(0, 160)}` : ""}`);
+    }
+    if (!official) {
+      const payload = await res.json() as { data?: { id?: string }[]; models?: (string | { id?: string })[] };
+      const items = Array.isArray(payload.data) ? payload.data : Array.isArray(payload.models) ? payload.models : [];
+      const models = items.map(item => typeof item === "string" ? item : item.id).filter((id): id is string => typeof id === "string" && isValidNovelAiModel(id));
+      if (!models.length) throw new Error("中转未返回可用的 NovelAI 模型，请手动填写该站模型 ID。");
+      return models;
     }
     return [...NOVELAI_COMMON_MODELS];
   } catch (error) {
@@ -753,8 +766,8 @@ export async function generateImageFromConfiguredApi(params: {
     const fullPrompt = positiveParts.join(", ");
 
     const data = settings.requestMode === "direct"
-      ? await generateNovelAiDirect({ apiKey: naiApiKey, preset: activePreset, prompt: fullPrompt, signal: params.signal })
-      : await generateNovelAiViaServer({ apiKey: naiApiKey, preset: activePreset, prompt: fullPrompt, signal: params.signal });
+      ? await generateNovelAiDirect({ baseUrl: settings.novelai?.baseUrl, apiKey: naiApiKey, preset: activePreset, prompt: fullPrompt, signal: params.signal })
+      : await generateNovelAiViaServer({ baseUrl: settings.novelai?.baseUrl, apiKey: naiApiKey, preset: activePreset, prompt: fullPrompt, signal: params.signal });
 
     throwIfAborted(params.signal);
     const mimeType = data.mimeType || "image/png";
