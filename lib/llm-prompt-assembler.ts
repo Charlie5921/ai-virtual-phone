@@ -1,3 +1,4 @@
+import { appendUserSubtext } from "./user-subtext";
 // lib/llm-prompt-assembler.ts
 
 import { Character } from "./character-types";
@@ -548,6 +549,7 @@ function pushChronologicalShortTermBlocks(params: {
 
         if (!body.trim() && !imageUrl) return;
 
+        body = appendUserSubtext(body, msg);
         const isAssistantImage = imageUrl && msg.role === "assistant" && msg.mediaType === "media_file";
         const text = isAssistantImage
             ? formatAssistantImageHistoryText(msg, body, Boolean(showTs), ts)
@@ -1008,6 +1010,7 @@ export function assemblePromptPayload(input: AssemblerInput): LLMMessage[] {
             }
 
             if (!body.trim() && !imageUrl) return;
+            body = appendUserSubtext(body, msg);
             const isAssistantImage = imageUrl && msg.role === "assistant" && msg.mediaType === "media_file";
             const text = isAssistantImage
                 ? formatAssistantImageHistoryText(msg, body, Boolean(showTs), ts)
@@ -1715,6 +1718,7 @@ function pushGroupChronologicalShortTermBlocks(params: {
             imageUrl = visionImageUrl;
         }
 
+        body = appendUserSubtext(body, msg);
         const isAssistantImage = imageUrl && msg.role === "assistant" && msg.mediaType === "media_file";
         const text = isAssistantImage
             ? formatAssistantImageHistoryText(msg, body, Boolean(showTs), ts)
@@ -2195,6 +2199,7 @@ export function assembleGroupPromptPayload(input: GroupAssemblerInput): LLMMessa
                 imageUrl = visionImageUrl;
             }
 
+            body = appendUserSubtext(body, msg);
             const isAssistantImage = imageUrl && msg.role === "assistant" && msg.mediaType === "media_file";
             const text = isAssistantImage
                 ? formatAssistantImageHistoryText(msg, body, Boolean(showTs), ts)

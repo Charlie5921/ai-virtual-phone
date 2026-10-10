@@ -59,6 +59,7 @@ import { getStatusRegionConfig, saveStatusRegionConfig, presetSupportsStatusRegi
 import { downloadFile } from "@/lib/download-utils";
 import { getSchemes, saveScheme, deleteScheme, type CSSScheme } from "@/lib/css-scheme-storage";
 import { CustomStatusFrame } from "@/components/chat/custom-status-frame";
+import { ChatPersonalSettings } from "./chat-personal-settings";
 import { KeyboardAutoSendDebounceItem } from "@/components/chat/keyboard-auto-send-debounce-item";
 import { ChevronRight, Image as ImageIcon, Video, Mic, UserMinus, UserPlus, Users, Pin, MessageSquare, Search, AlertCircle, Code, Laptop, Trash2, Smile, Sparkles, Lock, X, Play, Upload, Download, Save, FolderOpen, type LucideIcon } from "lucide-react";
 import { BINDING_ACCENTS, CONTENT_APP_ACCENTS } from "@/lib/ui-accent-colors";
@@ -336,6 +337,12 @@ export function ChatSettingsPanel({
     onOfflineHistoryCleared,
     offlineHistoryBusy = false,
 }: ChatSettingsPanelProps) {
+    const [, refreshIdentity] = useState(0);
+    useEffect(() => {
+        const refresh = () => refreshIdentity(value => value + 1);
+        window.addEventListener("settings-bindings-updated", refresh);
+        return () => window.removeEventListener("settings-bindings-updated", refresh);
+    }, []);
     const [backgroundImage, setBackgroundImage] = useState<string>(session.backgroundImage || "");
     const [alias, setAlias] = useState<string>(session.alias || "");
     const [videoBackground, setVideoBackground] = useState<string>(session.videoBackground || "");
@@ -611,7 +618,7 @@ export function ChatSettingsPanel({
     const groupChars = session.isGroup
         ? (session.participantIds || []).map(id => characters.find(c => c.id === id)).filter(Boolean)
         : [];
-    const userIdentity = resolveUserIdentity(undefined, session.isGroup ? "group_chat" : "chat");
+    const userIdentity = resolveUserIdentity(session.isGroup ? undefined : session.contactId, session.isGroup ? "group_chat" : "chat");
 
     // ── Group member management ──
     const [, setRosterVersion] = useState(0); // bump to re-render after admin actions
@@ -1207,6 +1214,7 @@ export function ChatSettingsPanel({
                     </div>
                 )}
 
+                <ChatPersonalSettings session={session} onClose={onClose} />
                 {/* 状态栏（状态区）：原生开关 + 自定义契约/渲染。
                     群聊同样支持：群回复按 [角色名]: 切段后每段各自解析，
                     一份契约 + 一份渲染，群里每个角色各出一条状态栏。 */}

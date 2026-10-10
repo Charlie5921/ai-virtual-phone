@@ -306,6 +306,7 @@ export type ChatMessage = {
     isTyping?: boolean; // temporary flag for UI rendering
     statusPanel?: string; // AI display-only status content from [状态栏] tags
     statusRegionMode?: "custom"; // 该消息生成时会话处于自定义状态栏模式（缺省=原生渲染）
+    userSubtext?: string; // 用户自行添加的场外潜台词；不覆盖气泡正文
     innerMonologue?: string; // AI inner monologue content from [内心] tags
     reasoningText?: string; // 模型思维链（reasoning/CoT）内容，挂在回复批次的第一条气泡上
     stateValues?: StateValue[]; // parsed character state values from inner monologue
@@ -1931,7 +1932,7 @@ export async function persistMessageVoiceAudio(
 
 export function updateChatMessage(
     messageId: string,
-    patch: Partial<Pick<ChatMessage, "content" | "mediaType" | "mediaUrl" | "mediaData">>,
+    patch: Partial<Pick<ChatMessage, "content" | "mediaType" | "mediaUrl" | "mediaData" | "userSubtext">>,
 ): ChatMessage | null {
     const idx = _messagesCache.findIndex(m => m.id === messageId);
     if (idx === -1) return null;

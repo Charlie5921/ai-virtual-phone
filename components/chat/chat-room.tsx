@@ -11,6 +11,8 @@ import { isKnownStickerLabel } from "@/lib/sticker-data";
 import { translateReasoningText } from "@/lib/reasoning-translate";
 import { MessageBubble, MediaDetailModal, prewarmStickerCache, BilingualTextBlock, isStandaloneHtmlPreviewContent, normalizeTextBubbleContent } from "./message-bubble";
 import { GeneratedImageErrorDialog } from "./generated-image-error-dialog";
+import { normalizeUserSubtext, USER_SUBTEXT_LIMIT } from "@/lib/user-subtext";
+import { ReversePhoneModal } from "./reverse-phone-modal";
 import { TruthGameModal } from "./truth-game-modal";
 import { FakeVideoInputModal, PhotoInputModal, TextPhotoModal, VoiceRecordModal, RedPacketModal, LocationInputModal, SystemInstructionModal } from "./rich-input-modals";
 import { EmojiPanel, StickerPanel } from "./emoji-panel";
@@ -1326,7 +1328,7 @@ type PendingMessageJump = {
 };
 
 const TRANSIENT_MESSAGE_PREFIX = "ui-transient-";
-type RichModalKind = "truth_game" | "photo" | "video" | "text_photo" | "red_packet" | "transfer" | "location" | "transfer_target" | "voice_msg" | "gift" | "system_instruction";
+type RichModalKind = "reverse_phone" | "truth_game" | "photo" | "video" | "text_photo" | "red_packet" | "transfer" | "location" | "transfer_target" | "voice_msg" | "gift" | "system_instruction";
 type ChatTextInputHandle = {
     appendText: (text: string, options?: { focus?: boolean }) => void;
     clear: () => void;
@@ -2423,6 +2425,16 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
 
     // Rich media input modals
     const [richModal, setRichModal] = useState<RichModalKind | null>(null);
+    const [subtextMessageId, setSubtextMessageId] = useState<string | null>(null);
+    const [subtextDraft, setSubtextDraft] = useState("");
+    useEffect(() => {
+        const refresh = () => setUserIdentity(resolveUserIdentity(session.contactId, "chat"));
+        const openReverse = (event: Event) => { if ((event as CustomEvent).detail?.sessionId === session.id) setRichModal("reverse_phone"); };
+        window.addEventListener("settings-bindings-updated", refresh);
+        window.addEventListener("settings-identities-updated", refresh);
+        window.addEventListener("open-reverse-phone", openReverse);
+        return () => { window.removeEventListener("settings-bindings-updated", refresh); window.removeEventListener("settings-identities-updated", refresh); window.removeEventListener("open-reverse-phone", openReverse); };
+    }, [session.id, session.contactId]);
     const [transferTarget, setTransferTarget] = useState<Character | null>(null);
     // Media detail modal (red packet / transfer detail view)
     const [mediaDetailMsg, setMediaDetailMsg] = useState<ChatMessage | null>(null);
@@ -8654,6 +8666,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                     {m.mediaType === "audio" && m.mediaData?.label && (
                         <button onClick={() => { setVoiceTextIds(prev => { const next = new Set(prev); if (next.has(m.id)) next.delete(m.id); else next.add(m.id); return next; }); setActiveMessageId(null); }} className="ctx-menu-btn">转文字</button>
                     )}
+                    {m.role === "user" && <button className="ctx-menu-btn" onClick={() => { const stored = loadChatMessages(session.id).find(message => message.id === storedMessageId); setSubtextDraft(normalizeUserSubtext(stored?.userSubtext)); setSubtextMessageId(storedMessageId); closeContextMenu(); }}>{m.userSubtext ? "编辑潜台词" : "输入潜台词"}</button>}
                     {m.role === "user" && (
                         <button onClick={() => handleRetractMessage(storedMessageId)} className="ctx-menu-btn">撤回消息</button>
                     )}
@@ -9865,6 +9878,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                                             data-msg-id={msg.id}
                                             {...(activeMessageId === msg.id ? { "data-active": "" } : {})}
                                             >
+                                            {msg.role === "user" && msg.userSubtext ? <details className="mb-2 ts-12 opacity-75" onClick={event => event.stopPropagation()}><summary className="cursor-pointer">我的潜台词</summary><p className="whitespace-pre-wrap break-words mt-1">{msg.userSubtext}</p></details> : null}
                                             {/* Message Actions Popup */}
                                             {activeMessageId === msg.id && renderBubbleContextMenu(msg)}
 
@@ -10447,6 +10461,8 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                 </div>
             )}
 
+            {subtextMessageId && <div className="modal-overlay" onClick={() => setSubtextMessageId(null)}><div className="modal-dialog p-5 w-[min(90vw,430px)]" role="dialog" aria-modal="true" aria-label="输入潜台词" onClick={event => event.stopPropagation()}><h3 className="font-semibold mb-3">我的潜台词</h3><p className="menu-desc mb-3">补充这条消息没说出口的想法。会作为场外提示加入后续上下文；不改正文，也不会自动重生成回复。</p><textarea autoFocus aria-label="这条消息的潜台词" maxLength={USER_SUBTEXT_LIMIT} className="w-full min-h-[160px] p-3 rounded-xl bg-[var(--c-input)] text-[var(--c-text)]" value={subtextDraft} onChange={event => setSubtextDraft(event.target.value)} placeholder="例如：其实很想让他抱抱我，只是不好意思说…" /><div className="flex justify-end gap-2 mt-3"><button type="button" className="ui-btn ui-btn-outline" onClick={() => setSubtextMessageId(null)}>取消</button><button type="button" className="ui-btn ui-btn-primary" onClick={() => { const target = loadChatMessages(session.id).find(message => message.id === subtextMessageId); if (!target || target.role !== "user" || target.isRetracted) { showChatToast("这条消息已删除或撤回"); setSubtextMessageId(null); return; } const updated = updateChatMessage(target.id, { userSubtext: normalizeUserSubtext(subtextDraft) || undefined }); if (updated) setMessages(previous => previous.map(message => message.id === updated.id ? updated : message)); setSubtextMessageId(null); }}>保存</button></div><p className="menu-desc mt-2">清空并保存即可移除潜台词。</p></div></div>}
+            {richModal === "reverse_phone" && !session.isGroup && <ReversePhoneModal key={session.id} session={session} onClose={() => setRichModal(null)} onRecord={text => { const notice = pushChatMessage({ sessionId: session.id, role: "system", content: text }); setMessages(previous => [...previous, notice]); }} />}
             {/* Rich Media Input Modals */}
             {richModal === "truth_game" && !session.isGroup && <TruthGameModal key={session.id} sessionId={session.id} userName={userIdentity?.name || "你"} characterName={character?.name || "对方"} onSend={handleSendText} onClose={() => setRichModal(null)} />}
             {richModal === "voice_msg" && (
