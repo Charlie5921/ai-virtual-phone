@@ -1,3 +1,4 @@
+import { getCharacterImageAppearance, mergeCharacterImageAppearance } from "./chat-personal-features";
 import { isValidNovelAiModel } from "./novelai-image-config";
 import { normalizeNovelAiBaseUrl, novelAiGenerationUrl, isOfficialNovelAi } from "./novelai-endpoint";
 import type { ImageGenerationSettings, NovelAiPreset } from "./settings-types";
@@ -747,8 +748,9 @@ export async function generateImageFromConfiguredApi(params: {
   const settings = params.settings ?? loadImageGenerationSettings();
   if (!settings.enabled) return null;
 
-  const description = params.description.trim();
-  if (!description) return null;
+  const rawDescription = params.description.trim();
+  if (!rawDescription) return null;
+  const description = mergeCharacterImageAppearance(rawDescription, getCharacterImageAppearance(params.characterId));
 
   // NovelAI 模式
   if (settings.provider === "novelai") {
