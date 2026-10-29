@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { ChatSession } from '@/lib/chat-storage';
 import { loadChatOfflineTurns, loadActiveOfflineTurns } from '@/lib/chat-offline-storage';
 import { endOfflineMeeting, loadOfflineMeetings, summarizeOfflineMeeting, type OfflineMeeting } from '@/lib/offline-meetings';
@@ -27,11 +28,10 @@ export function OfflineMeetingsPanel({ session, busy, onChanged, onReturn, onArc
         catch (e) { setError(`记录已保留，待补总结：${e instanceof Error ? e.message : String(e)}`); }
         finally { setWorking(false); }
     };
-    return <div className="chat-room-main-pane px-4 py-2 flex gap-2 items-center text-sm">
-        <span className="flex-1">本场线下 · {loadActiveOfflineTurns(session.id).length} 轮</span>
-        <button className="ui-btn" onClick={() => setOpen(true)}>场次 / 结束</button>
-        {open && <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="线下场次"><div className="modal-dialog" style={{ maxHeight: '85dvh', overflowY: 'auto' }}>
-            <div className="modal-header"><h3 className="modal-title">线下场次</h3></div>
+    return <span className="offline-meeting-header-action" style={{ display: "inline-flex", flexShrink: 0 }}>
+        <button type="button" aria-label="结束本场或查看过往线下" className="ui-btn" style={{ padding: "6px 10px", fontSize: 13, whiteSpace: "nowrap" }} onClick={() => setOpen(true)}>结束 / 记录</button>
+        {open && createPortal(<div className="modal-overlay" style={{ zIndex: 10000 }} role="dialog" aria-modal="true" aria-label="线下场次"><div className="modal-dialog" style={{ maxHeight: '85dvh', overflowY: 'auto' }}>
+            <div className="modal-header"><h3 className="modal-title">线下场次 · 当前 {loadActiveOfflineTurns(session.id).length} 轮</h3></div>
             <div className="modal-body space-y-3">
                 <p>暂时返回线上会保留本场。结束并总结后，下次进入就是新场合。</p>
                 <input aria-label="本场标题" placeholder="本场标题，如：周末约会" value={title} onChange={e => setTitle(e.target.value)} className="w-full p-3 rounded-xl bg-[var(--c-input)]" />
@@ -55,6 +55,6 @@ export function OfflineMeetingsPanel({ session, busy, onChanged, onReturn, onArc
                 </section>}
             </div>
             <div className="modal-footer"><button className="ui-btn" disabled={working} onClick={() => setOpen(false)}>关闭</button><button className="ui-btn" disabled={working || busy} onClick={() => { setOpen(false); onReturn(); }}>返回线上</button></div>
-        </div></div>}
-    </div>;
+        </div></div>, document.body)}
+    </span>;
 }
