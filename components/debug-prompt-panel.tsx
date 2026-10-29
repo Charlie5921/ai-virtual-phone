@@ -30,7 +30,7 @@ import { loadStorySessions, loadStoryMessages } from "@/lib/story-storage";
 import { previewStoryPromptPayload } from "@/lib/story-engine";
 import { loadVnSessions, loadVnMessages } from "@/lib/vn-storage";
 import { previewVnPromptPayload } from "@/lib/vn-engine";
-import { loadChatOfflineTurns } from "@/lib/chat-offline-storage";
+import { loadActiveOfflineTurns } from "@/lib/chat-offline-storage";
 import { buildOfflinePromptHistory } from "@/lib/offline-prompt-builder";
 import { EXTRA_PROMPT_APPS, type ExtraPromptAppId } from "@/components/debug-prompt-registry";
 import { previewCheckPhonePromptPayload } from "@/lib/checkphone-engine";
@@ -380,7 +380,7 @@ export function DebugPromptPanel() {
                 // 线下模式：历史来自「线下轮次」，assistant 内容为 <content>+摘要 XML，
                 // 与 chat-room 真实线下生成完全一致（appTags 带 offline）。
                 // 空历史也允许预览：看的就是首条线下消息发出前的完整提示词
-                const offlineTurns = loadChatOfflineTurns(activeChatSession.id);
+                const offlineTurns = loadActiveOfflineTurns(activeChatSession.id);
                 const offlineHistory = buildOfflinePromptHistory(activeChatSession, offlineTurns, offlinePendingText);
                 if (activeChatSession.isGroup) {
                     await previewGroupPromptRequestSnapshot(activeChatSession, offlineHistory, {
