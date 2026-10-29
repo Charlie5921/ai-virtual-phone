@@ -9,6 +9,7 @@ registerDynamicPrefix(CHAT_OFFLINE_TURNS_PREFIX);
 export type ChatOfflineTurn = {
     id: string;
     sessionId: string;
+    meetingId?: string;
     userContent: string;
     assistantContent: string;
     summary: string;
@@ -53,6 +54,7 @@ function normalizeTurn(value: unknown): ChatOfflineTurn | null {
     if (typeof item.createdAt !== "string") return null;
     return {
         id: item.id,
+        meetingId: typeof item.meetingId === "string" ? item.meetingId : undefined,
         sessionId: item.sessionId,
         userContent: item.userContent,
         assistantContent: item.assistantContent,
@@ -90,6 +92,7 @@ export function saveChatOfflineTurns(sessionId: string, turns: ChatOfflineTurn[]
 
 export function clearChatOfflineTurns(sessionId: string): void {
     kvRemove(storageKey(sessionId));
+    kvRemove("ai_phone_offline_meetings:" + sessionId);
 }
 
 export function appendChatOfflineTurn(input: {
@@ -149,7 +152,8 @@ export function deleteChatOfflineTurnsFrom(sessionId: string, turnId: string): C
     const turns = loadChatOfflineTurns(sessionId);
     const idx = turns.findIndex((turn) => turn.id === turnId);
     if (idx < 0) return turns;
-    const next = turns.slice(0, idx);
+    const target = turns[idx];
+    const next = turns.filter((turn, i) => i < idx || turn.meetingId !== target.meetingId);
     saveChatOfflineTurns(sessionId, next);
     return next;
 }
@@ -170,7 +174,7 @@ export function loadChatOfflineProjectionEntries(
     options?: { afterTimestamp?: string; excludeSessionId?: string },
 ): ChatOfflineProjectionEntry[] {
     const sessions = loadChatSessions().filter((session) => {
-        if (session.id === options?.excludeSessionId) return false;
+
         if (session.isGroup) return session.participantIds?.includes(characterId);
         return session.contactId === characterId;
     });
@@ -178,6 +182,7 @@ export function loadChatOfflineProjectionEntries(
     const entries: ChatOfflineProjectionEntry[] = [];
     for (const session of sessions) {
         for (const turn of loadChatOfflineTurns(session.id)) {
+            if (session.id === options?.excludeSessionId && !turn.meetingId) continue;
             if (options?.afterTimestamp && turn.createdAt <= options.afterTimestamp) continue;
             const summaryText = compactProjectionText(turn.summary, 500);
             if (!summaryText) continue;
@@ -187,7 +192,7 @@ export function loadChatOfflineProjectionEntries(
                 sessionId: session.id,
                 ...(session.isGroup ? { groupSessionId: session.id } : {}),
                 timestamp: turn.createdAt,
-                content: `[事件 ${ts}] ${summaryText}`,
+                content: `[${turn.meetingId ? "已结束的线下经历" : "线下事件"} ${ts}] ${summaryText}`,
             });
         }
     }
@@ -271,4 +276,8 @@ export function getChatOfflineTurnPreview(turn: ChatOfflineTurn | null): string 
     const source = turn.summary.trim() || turn.assistantContent.trim() || turn.userContent.trim();
     const text = compactProjectionText(source, 60);
     return text ? `[线下] ${text}` : "";
+}
+
+export function loadActiveOfflineTurns(sessionId: string): ChatOfflineTurn[] {
+    return loadChatOfflineTurns(sessionId).filter(turn => !turn.meetingId);
 }
