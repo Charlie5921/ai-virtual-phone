@@ -1,4 +1,6 @@
 "use client";
+import { OfflineMeetingsPanel, SendAsModal } from "./offline-meetings-panel";
+import { loadActiveOfflineTurns } from "@/lib/chat-offline-storage";
 
 import { appNowISO, appNowMs } from "@/lib/app-clock";
 import { forwardRef, Fragment, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -1328,7 +1330,7 @@ type PendingMessageJump = {
 };
 
 const TRANSIENT_MESSAGE_PREFIX = "ui-transient-";
-type RichModalKind = "reverse_phone" | "truth_game" | "photo" | "video" | "text_photo" | "red_packet" | "transfer" | "location" | "transfer_target" | "voice_msg" | "gift" | "system_instruction";
+type RichModalKind = "send_as" | "reverse_phone" | "truth_game" | "photo" | "video" | "text_photo" | "red_packet" | "transfer" | "location" | "transfer_target" | "voice_msg" | "gift" | "system_instruction";
 type ChatTextInputHandle = {
     appendText: (text: string, options?: { focus?: boolean }) => void;
     clear: () => void;
@@ -1576,6 +1578,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
         { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--c-text)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></svg>, label: "位置", onClick: () => onOpenRichModal("location") },
         { icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--c-text)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="22" /><line x1="8" y1="22" x2="16" y2="22" /></svg>, label: "语音条", onClick: () => onOpenRichModal("voice_msg") },
         ...(!isGroup ? [{ icon: <span aria-hidden="true" style={{ fontSize: 25 }}>⚄</span>, label: "真心话小游戏", onClick: () => onOpenRichModal("truth_game") }] : []),
+        ...(!isGroup ? [{ icon: <span aria-hidden="true">✎</span>, label: "替 TA 发言", onClick: () => onOpenRichModal("send_as") }] : []),
         ...customPlusActions.map(action => ({
             icon: action.appIconDataUrl
                 ? <span className="chat-plus-custom-app-icon" style={{ backgroundImage: `url(${action.appIconDataUrl})` }} aria-hidden="true" />
@@ -3301,7 +3304,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         setShowConfirmMultiDelete(false);
         setEditingOfflineTarget(null);
         setEditingOfflineContent("");
-        setOfflineTurns(loadChatOfflineTurns(session.id));
+        setOfflineTurns(loadActiveOfflineTurns(session.id));
 
         // Prewarm sticker cache for all relevant characters, then load messages
         const allMsgs = loadChatMessages(session.id);
@@ -6450,7 +6453,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         setRichModal(null);
         setQuotingMessage(null);
         setActiveOfflineTarget(null);
-        setOfflineTurns(loadChatOfflineTurns(session.id));
+        setOfflineTurns(loadActiveOfflineTurns(session.id));
         setOfflineVisibleCount(OFFLINE_INITIAL_LOAD);
         setOfflineMode(prev => {
             const next = !prev;
@@ -6645,10 +6648,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             return;
         }
         // 如果当前在线下模式，且当前会话属于“角色主动发起见面的线下赴约”：弹出确认弹窗
-        if (offlineMode && kvGet(OFFLINE_INVITE_ACTIVE_SESSION_PREFIX + session.id) === "1") {
-            setShowConfirmExitOfflineInvite(true);
-            return;
-        }
+        // Switching modes pauses the scene; the scene panel handles explicit ending.
         doToggleOfflineMode(false);
     };
 
@@ -7061,12 +7061,12 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
     };
 
     const handleOfflineDeleteTurn = (turnId: string) => {
-        setOfflineTurns(deleteChatOfflineTurn(session.id, turnId));
+        setOfflineTurns(deleteChatOfflineTurn(session.id, turnId).filter(t => !t.meetingId));
         setActiveOfflineTarget(null);
     };
 
     const handleOfflineDeleteTurnsFrom = (turnId: string) => {
-        setOfflineTurns(deleteChatOfflineTurnsFrom(session.id, turnId));
+        setOfflineTurns(deleteChatOfflineTurnsFrom(session.id, turnId).filter(t => !t.meetingId));
         setActiveOfflineTarget(null);
     };
 
@@ -7091,7 +7091,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
         setShowEmojiPanel(false);
         setShowStickerPanel(false);
         setRichModal(null);
-        saveChatOfflineTurns(session.id, baseTurns);
+        saveChatOfflineTurns(session.id, [...loadChatOfflineTurns(session.id).filter(t => t.meetingId), ...baseTurns]);
         setOfflineTurns(baseTurns);
         setPendingOfflineUserText(retryInput);
         offlineGenerationInputRef.current = retryInput;
@@ -9318,6 +9318,13 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                 })() : null)
             )}
 
+            {offlineMode && <OfflineMeetingsPanel key={session.id} session={session} busy={isOfflineGenerating || isGenerating} onChanged={() => setOfflineTurns(loadActiveOfflineTurns(session.id))} onReturn={() => doToggleOfflineMode(false)} onArchived={() => {
+                kvRemove(OFFLINE_INVITE_ACTIVE_SESSION_PREFIX + session.id);
+                kvRemove(OFFLINE_INVITE_ACTIVE_THEME_PREFIX + session.id);
+                updateActiveOfflineInvite(null);
+                const notice = pushChatMessage({ sessionId: session.id, role: "system", content: "本次线下见面已结束，双方返回线上。下次见面是新的场合。", mediaType: "offline_invite_system_notice" });
+                setMessages(prev => [...prev, notice]);
+            }} />}
             {/* Message List */}
             <div
                 ref={scrollRef}
@@ -10464,6 +10471,13 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
             {subtextMessageId && <div className="modal-overlay" onClick={() => setSubtextMessageId(null)}><div className="modal-dialog p-5 w-[min(90vw,430px)]" role="dialog" aria-modal="true" aria-label="输入潜台词" onClick={event => event.stopPropagation()}><h3 className="font-semibold mb-3">我的潜台词</h3><p className="menu-desc mb-3">补充这条消息没说出口的想法。会作为场外提示加入后续上下文；不改正文，也不会自动重生成回复。</p><textarea autoFocus aria-label="这条消息的潜台词" maxLength={USER_SUBTEXT_LIMIT} className="w-full min-h-[160px] p-3 rounded-xl bg-[var(--c-input)] text-[var(--c-text)]" value={subtextDraft} onChange={event => setSubtextDraft(event.target.value)} placeholder="例如：其实很想让他抱抱我，只是不好意思说…" /><div className="flex justify-end gap-2 mt-3"><button type="button" className="ui-btn ui-btn-outline" onClick={() => setSubtextMessageId(null)}>取消</button><button type="button" className="ui-btn ui-btn-primary" onClick={() => { const target = loadChatMessages(session.id).find(message => message.id === subtextMessageId); if (!target || target.role !== "user" || target.isRetracted) { showChatToast("这条消息已删除或撤回"); setSubtextMessageId(null); return; } const updated = updateChatMessage(target.id, { userSubtext: normalizeUserSubtext(subtextDraft) || undefined }); if (updated) setMessages(previous => previous.map(message => message.id === updated.id ? updated : message)); setSubtextMessageId(null); }}>保存</button></div><p className="menu-desc mt-2">清空并保存即可移除潜台词。</p></div></div>}
             {richModal === "reverse_phone" && !session.isGroup && <ReversePhoneModal key={session.id} session={session} onClose={() => setRichModal(null)} onRecord={text => { const notice = pushChatMessage({ sessionId: session.id, role: "system", content: text }); setMessages(previous => [...previous, notice]); }} />}
             {/* Rich Media Input Modals */}
+            {richModal === "send_as" && !session.isGroup && <SendAsModal name={character?.name || "对方"} busy={isGenerating || isOfflineGenerating} onClose={() => setRichModal(null)} onSend={(content) => {
+                if (isGenerating || isOfflineGenerating) return;
+                cancelFollowUp(session.id);
+                const msg = pushChatMessage({ sessionId: session.id, role: "assistant", content });
+                setMessages(prev => [...prev, msg]);
+                setRichModal(null);
+            }} />}
             {richModal === "truth_game" && !session.isGroup && <TruthGameModal key={session.id} sessionId={session.id} userName={userIdentity?.name || "你"} characterName={character?.name || "对方"} onSend={handleSendText} onClose={() => setRichModal(null)} />}
             {richModal === "voice_msg" && (
                 <VoiceRecordModal
