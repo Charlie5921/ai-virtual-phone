@@ -9246,6 +9246,13 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                         )}
                     </span>
                     <span className="page-header-right">
+            {offlineMode && <OfflineMeetingsPanel key={session.id} session={session} busy={isOfflineGenerating || isGenerating} onChanged={() => setOfflineTurns(loadActiveOfflineTurns(session.id))} onReturn={() => doToggleOfflineMode(false)} onArchived={() => {
+                kvRemove(OFFLINE_INVITE_ACTIVE_SESSION_PREFIX + session.id);
+                kvRemove(OFFLINE_INVITE_ACTIVE_THEME_PREFIX + session.id);
+                updateActiveOfflineInvite(null);
+                const notice = pushChatMessage({ sessionId: session.id, role: "system", content: "本次线下见面已结束，双方返回线上。下次见面是新的场合。", mediaType: "offline_invite_system_notice" });
+                setMessages(prev => [...prev, notice]);
+            }} />}
                         <button className="page-back-btn" type="button" onClick={() => setShowSettings(true)} aria-label="更多">
                             <MoreHorizontal size={22} strokeWidth={1.5} />
                         </button>
@@ -9318,13 +9325,7 @@ export function ChatRoom({ session, onBack, onDeleted }: ChatRoomProps) {
                 })() : null)
             )}
 
-            {offlineMode && <OfflineMeetingsPanel key={session.id} session={session} busy={isOfflineGenerating || isGenerating} onChanged={() => setOfflineTurns(loadActiveOfflineTurns(session.id))} onReturn={() => doToggleOfflineMode(false)} onArchived={() => {
-                kvRemove(OFFLINE_INVITE_ACTIVE_SESSION_PREFIX + session.id);
-                kvRemove(OFFLINE_INVITE_ACTIVE_THEME_PREFIX + session.id);
-                updateActiveOfflineInvite(null);
-                const notice = pushChatMessage({ sessionId: session.id, role: "system", content: "本次线下见面已结束，双方返回线上。下次见面是新的场合。", mediaType: "offline_invite_system_notice" });
-                setMessages(prev => [...prev, notice]);
-            }} />}
+
             {/* Message List */}
             <div
                 ref={scrollRef}
