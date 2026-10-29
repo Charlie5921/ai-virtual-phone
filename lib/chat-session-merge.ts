@@ -1,3 +1,4 @@
+import { mergeOfflineMeetingArchives } from "./offline-meetings";
 // lib/chat-session-merge.ts
 // 重复会话检测与合并：同一角色的单聊、同一批成员的群聊算重复。
 // 合并 = 线上消息 + 线下记录全部并入最近活跃的那个会话，其余会话走一站式删除。
@@ -136,6 +137,7 @@ export function mergeDuplicateSessionGroup(group: DuplicateSessionGroup): void {
                 ...sourceTurns.map(turn => ({ ...turn, sessionId: target.id })),
             ]);
         }
+        mergeOfflineMeetingArchives(source.id, target.id);
         // 剩下的空壳连同散装状态一并清掉
         removeChatSessionCompletely(source.id);
     }
